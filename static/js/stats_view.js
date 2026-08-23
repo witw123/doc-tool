@@ -125,32 +125,12 @@ document.addEventListener('DOMContentLoaded', () => {
   loadSavedPrefixes();
   initStatsTagInput();
 
-  const pathInput = document.getElementById('stats-input-path');
-  if (pathInput) {
-    pathInput.addEventListener('change', () => {
-      const val = pathInput.value.trim();
-      if (val) {
-        runStatsScan();
-      }
-    });
-
-    pathInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        const val = pathInput.value.trim();
-        if (val) {
-          runStatsScan();
-        }
-      }
-    });
-  }
-
   const btnAutoDetect = document.getElementById('btn-auto-detect-prefix');
   if (btnAutoDetect) {
     btnAutoDetect.addEventListener('click', async () => {
-      const val = document.getElementById('stats-input-path').value.trim();
+      const val = getDirectoryPath('stats-input-path');
       if (!val) {
-        showToast('请先输入或选择文件夹路径', 'warning');
+        showToast('请先选择本地文件夹', 'warning');
         return;
       }
       btnAutoDetect.disabled = true;
@@ -308,7 +288,7 @@ function initFilenameTemplateManager() {
 
 async function exportFilenameXlsx() {
   const button = document.getElementById('btn-export-filename-xlsx');
-  const path = document.getElementById('filename-export-path').value.trim();
+  const path = getDirectoryPath('filename-export-path');
   const fields = document.getElementById('filename-export-fields').value
     .split(/[,，]/)
     .map(field => field.trim())
@@ -317,7 +297,7 @@ async function exportFilenameXlsx() {
   const layout = document.getElementById('filename-export-layout').value;
 
   if (!path) {
-    showToast('请输入文件夹路径', 'warning');
+    showToast('请选择本地文件夹', 'warning');
     return;
   }
   if (fields.length === 0) {
@@ -353,7 +333,7 @@ async function exportFilenameXlsx() {
 
 function getFilenamePreviewConfig() {
   return {
-    path: document.getElementById('filename-export-path').value.trim(),
+    path: getDirectoryPath('filename-export-path'),
     fields: document.getElementById('filename-export-fields').value
       .split(/[,，]/)
       .map(field => field.trim())
@@ -366,7 +346,7 @@ async function previewFilename() {
   const button = document.getElementById('btn-preview-filename');
   const config = getFilenamePreviewConfig();
   if (!config.path) {
-    showToast('请输入文件夹路径', 'warning');
+    showToast('请选择本地文件夹', 'warning');
     return;
   }
   if (config.fields.length === 0) {
@@ -447,9 +427,9 @@ function renderFilenamePreviewTable() {
 
 // Run Directory Scan
 async function runStatsScan() {
-  const pathInput = document.getElementById('stats-input-path').value.trim();
+  const pathInput = getDirectoryPath('stats-input-path');
   if (!pathInput) {
-    showToast('请输入目标文件夹路径', 'warning');
+    showToast('请选择本地目标文件夹', 'warning');
     document.getElementById('stats-input-path').focus();
     return;
   }

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>FileScope - 轻量化文件名比对与统计工具</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=14">
+  <link rel="stylesheet" href="/static/css/style.css?v=15">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -17,7 +17,7 @@
       <div class="brand-logo">FS</div>
       <div class="brand-title">
         FileScope
-        <span class="brand-badge">Server Web Edition</span>
+        <span class="brand-badge">Local Edition</span>
       </div>
     </div>
 
@@ -71,13 +71,13 @@
           <!-- Folder Path -->
           <div class="form-group">
             <label class="form-label" for="stats-input-path">
-              <span class="form-label-left">目标文件夹路径 (服务器绝对路径)</span>
+              <span class="form-label-left">本地目标文件夹</span>
             </label>
             <div class="input-with-action">
-              <input type="text" id="stats-input-path" class="form-input" placeholder="例如: E:\data\documents 或 /var/data/files">
-              <button class="btn btn-secondary" onclick="openBrowserModal('stats-input-path')">
+              <input type="text" id="stats-input-path" class="form-input" placeholder="请选择本机文件夹" readonly>
+              <button class="btn btn-secondary" type="button" onclick="selectLocalFolder('stats-input-path')">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                浏览目录
+                选择本地文件夹
               </button>
             </div>
           </div>
@@ -136,7 +136,7 @@
         <div class="empty-state-icon">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
         </div>
-        <div class="empty-state-title">输入目录路径开始统计</div>
+        <div class="empty-state-title">选择本地文件夹开始统计</div>
         <div class="empty-state-desc">
           系统将自动递归遍历所有子文件夹，精准计算各前缀文件数与占比，并挖掘最深层叶子目录明细及全局合计数据。
         </div>
@@ -320,10 +320,10 @@
           <div class="form-group export-path-field">
             <label class="form-label" for="filename-export-path">目标文件夹路径</label>
             <div class="input-with-action">
-              <input type="text" id="filename-export-path" class="form-input" placeholder="例如: E:\data\documents">
-              <button class="btn btn-secondary" type="button" onclick="openBrowserModal('filename-export-path')">
+              <input type="text" id="filename-export-path" class="form-input" placeholder="请选择本机文件夹" readonly>
+              <button class="btn btn-secondary" type="button" onclick="selectLocalFolder('filename-export-path')">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2-2V7a2 2 0 0 0-2-2h-5l-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2z"/></svg>
-                浏览目录
+                选择本地文件夹
               </button>
             </div>
           </div>
@@ -407,8 +407,8 @@
               </span>
             </label>
             <div class="input-with-action">
-              <input type="text" id="diff-dir-a" class="form-input" placeholder="输入目录 A 的服务器绝对路径">
-              <button class="btn btn-secondary" onclick="openBrowserModal('diff-dir-a')">浏览</button>
+              <input type="text" id="diff-dir-a" class="form-input" placeholder="请选择本机目录 A" readonly>
+              <button class="btn btn-secondary" type="button" onclick="selectLocalFolder('diff-dir-a')">选择本地文件夹</button>
             </div>
           </div>
 
@@ -421,8 +421,8 @@
               </span>
             </label>
             <div class="input-with-action">
-              <input type="text" id="diff-dir-b" class="form-input" placeholder="输入目录 B 的服务器绝对路径">
-              <button class="btn btn-secondary" onclick="openBrowserModal('diff-dir-b')">浏览</button>
+              <input type="text" id="diff-dir-b" class="form-input" placeholder="请选择本机目录 B" readonly>
+              <button class="btn btn-secondary" type="button" onclick="selectLocalFolder('diff-dir-b')">选择本地文件夹</button>
             </div>
           </div>
         </div>
@@ -661,45 +661,14 @@
 
   </main>
 
-  <!-- Server Directory Browser Modal -->
-  <div class="modal-backdrop" id="browser-modal">
-    <div class="modal-card">
-      <div class="modal-header">
-        <h3 style="font-size: 0.95rem; font-weight: 700; display: flex; align-items: center; gap: 0.45rem;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-          选择服务器目录
-        </h3>
-        <button class="icon-btn" onclick="closeBrowserModal()">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-      <div class="modal-body">
-        <div class="browser-path-bar">
-          <button class="btn btn-secondary btn-sm" id="browser-btn-up" onclick="browseUpDirectory()" title="返回上一级目录">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
-            上一级
-          </button>
-          <div id="browser-current-path" class="browser-current-path">当前路径...</div>
-        </div>
-        <div id="browser-list-container" style="max-height: 360px; overflow-y: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.35rem;">
-          <!-- Dynamic Items -->
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeBrowserModal()">取消</button>
-        <button class="btn btn-primary" onclick="confirmBrowserSelection()">选择此目录</button>
-      </div>
-    </div>
-  </div>
-
   <!-- Toast Container -->
   <div class="toast-container" id="toast-container"></div>
 
   <!-- Scripts -->
   <script src="/static/js/utils.js?v=5"></script>
-  <script src="/static/js/api.js?v=6"></script>
-  <script src="/static/js/stats_view.js?v=9"></script>
-  <script src="/static/js/diff_view.js?v=5"></script>
-  <script src="/static/js/app.js?v=6"></script>
+  <script src="/static/js/api.js?v=8"></script>
+  <script src="/static/js/stats_view.js?v=11"></script>
+  <script src="/static/js/diff_view.js?v=7"></script>
+  <script src="/static/js/app.js?v=8"></script>
 </body>
 </html>

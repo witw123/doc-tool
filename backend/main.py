@@ -6,8 +6,7 @@ import os
 import platform
 import sys
 import subprocess
-from typing import Optional
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, Response
@@ -17,16 +16,17 @@ from backend.models import (
     ScanResponse,
     CompareRequest,
     CompareResponse,
-    BrowseResponse,
     OpenFolderRequest,
+    SelectFolderRequest,
+    SelectFolderResponse,
     FilenameExportRequest,
     FilenamePreviewRequest,
     FilenamePreviewResponse,
 )
 from backend.scanner import DirectoryScanner
 from backend.comparator import DirectoryComparator
-from backend.file_browser import browse_directory
 from backend.filename_exporter import build_filename_export, build_filename_preview
+from backend.folder_picker import select_local_folder
 
 app = FastAPI(
     title="FileScope Web API",
@@ -95,10 +95,16 @@ async def compare_directories(request: CompareRequest):
         raise HTTPException(status_code=500, detail=f"Comparison failed: {str(e)}")
 
 
-@app.get("/api/browse", response_model=BrowseResponse)
-async def browse_server_directory(path: Optional[str] = Query(None, description="Directory path to browse")):
-    """Browse server filesystem directories."""
-    return browse_directory(path)
+@app.post("/api/select-local-folder", response_model=SelectFolderResponse)
+def choose_local_folder(request: SelectFolderRequest):
+    """Open the native folder picker on the machine running FileScope."""
+    try:
+        selected_path = select_local_folder(request.initial_path)
+        return SelectFolderResponse(selected=bool(selected_path), path=selected_path)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"打开本地文件夹选择窗口失败: {exc}")
 
 
 @app.post("/api/export-filename-xlsx")

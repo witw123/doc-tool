@@ -1,10 +1,6 @@
 /**
- * Main application coordinator: navigation tabs, theme switching, directory modal, keyboard shortcuts, and mock presets
+ * Main application coordinator: navigation tabs, theme switching, local folder selection, keyboard shortcuts, and mock presets
  */
-
-let activeBrowserTargetInputId = null;
-let currentBrowserPath = '';
-let currentParentPath = null;
 
 // Tab Switching
 function switchTab(tabName) {
@@ -49,112 +45,29 @@ function setTheme(theme) {
   }
 }
 
-const STORAGE_KEY_LAST_PATH = 'filescope_last_browsed_path';
-
-// Server File Browser Modal
-async function openBrowserModal(targetInputId) {
-  activeBrowserTargetInputId = targetInputId;
-  let currentVal = document.getElementById(targetInputId).value.trim();
-  
-  // If input is empty, retrieve last memorized browsed directory
-  if (!currentVal) {
-    currentVal = localStorage.getItem(STORAGE_KEY_LAST_PATH) || '';
-  }
-
-  const modal = document.getElementById('browser-modal');
-  modal.classList.add('active');
-
-  await loadDirectoryContent(currentVal);
+function getDirectoryPath(inputId) {
+  return document.getElementById(inputId)?.value.trim() || '';
 }
 
-function closeBrowserModal() {
-  const modal = document.getElementById('browser-modal');
-  modal.classList.remove('active');
-}
+async function selectLocalFolder(targetInputId) {
+  const targetInput = document.getElementById(targetInputId);
+  if (!targetInput) return;
 
-async function loadDirectoryContent(targetPath) {
-  const container = document.getElementById('browser-list-container');
-  const pathInput = document.getElementById('browser-current-path');
-  const btnUp = document.getElementById('browser-btn-up');
-
-  container.innerHTML = '<div style="text-align:center; padding: 1.5rem; color: var(--text-muted); font-size: 0.85rem;"><span class="spinner"></span> 正在读取目录...</div>';
-
+  targetInput.disabled = true;
   try {
-    const data = await apiBrowseDirectory(targetPath);
-    currentBrowserPath = data.current_path;
-    currentParentPath = data.parent_path;
-
-    // Remember currently browsed path
-    if (data.current_path) {
-      localStorage.setItem(STORAGE_KEY_LAST_PATH, data.current_path);
+    const result = await apiSelectLocalFolder(targetInput.value.trim());
+    if (!result.selected || !result.path) return;
+    targetInput.value = result.path;
+    targetInput.title = result.path;
+    showToast(`已选择本地文件夹：${result.path}`, 'success', 3500);
+    if (targetInputId === 'stats-input-path' && typeof runStatsScan === 'function') {
+      runStatsScan();
     }
-
-    pathInput.textContent = data.current_path || '(根目录/磁盘列表)';
-    pathInput.title = data.current_path || '(根目录/磁盘列表)';
-    btnUp.disabled = !data.parent_path && data.current_path === '';
-
-    container.innerHTML = '';
-    if (!data.items || data.items.length === 0) {
-      container.innerHTML = '<div style="text-align:center; padding: 1.5rem; color: var(--text-muted); font-size: 0.85rem;">此目录为空</div>';
-      return;
-    }
-
-    data.items.forEach(item => {
-      const row = document.createElement('div');
-      row.className = 'browser-item';
-
-      const folderSvg = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
-      const fileSvg = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
-      const iconSvg = item.is_dir ? folderSvg : fileSvg;
-      const sizeStr = item.size !== null ? formatBytes(item.size) : '';
-
-      row.innerHTML = `
-        <div class="browser-item-left">
-          <span style="display:flex; align-items:center;">${iconSvg}</span>
-          <span style="font-weight: ${item.is_dir ? '600' : '400'};">${escapeHtml(item.name)}</span>
-        </div>
-        <div style="font-size: 0.75rem; color: var(--text-muted);">
-          ${sizeStr || item.mtime || ''}
-        </div>
-      `;
-
-      row.addEventListener('click', () => {
-        if (item.is_dir) {
-          loadDirectoryContent(item.path);
-        } else {
-          pathInput.value = item.path;
-        }
-      });
-
-      container.appendChild(row);
-    });
-  } catch (err) {
-    container.innerHTML = `<div style="color: var(--status-only-b-text); padding: 1rem; font-size: 0.85rem;">读取目录失败: ${escapeHtml(err.message)}</div>`;
+  } catch (error) {
+    showToast(`选择本地文件夹失败: ${error.message}`, 'error', 4500);
+  } finally {
+    targetInput.disabled = false;
   }
-}
-
-function browseUpDirectory() {
-  if (currentParentPath !== null) {
-    loadDirectoryContent(currentParentPath);
-  }
-}
-
-function confirmBrowserSelection() {
-  if (activeBrowserTargetInputId && currentBrowserPath) {
-    const targetInput = document.getElementById(activeBrowserTargetInputId);
-    if (targetInput) {
-      targetInput.value = currentBrowserPath;
-      localStorage.setItem(STORAGE_KEY_LAST_PATH, currentBrowserPath);
-      
-      // Auto-identify & scan immediately upon folder selection for Single Folder Stats
-      if (activeBrowserTargetInputId === 'stats-input-path') {
-        if (typeof runStatsScan === 'function') {
-          runStatsScan();
-        }
-      }
-    }
-  }
-  closeBrowserModal();
 }
 
 // Open and reveal a directory or file in the host OS native file explorer (Windows Explorer, Finder, etc.)
@@ -248,10 +161,6 @@ function initKeyboardShortcuts() {
         const btnDiff = document.getElementById('btn-run-diff');
         if (btnDiff) btnDiff.click();
       }
-    }
-    // Escape to close modal
-    if (e.key === 'Escape') {
-      closeBrowserModal();
     }
   });
 }

@@ -28,11 +28,11 @@ function onDiffModeChange() {
 
 // Run Comparison
 async function runCompare() {
-  const dirA = document.getElementById('diff-dir-a').value.trim();
-  const dirB = document.getElementById('diff-dir-b').value.trim();
+  const dirA = getDirectoryPath('diff-dir-a');
+  const dirB = getDirectoryPath('diff-dir-b');
 
   if (!dirA || !dirB) {
-    showToast('请输入目录 A 和目录 B 的路径', 'warning');
+    showToast('请选择本地目录 A 和目录 B', 'warning');
     return;
   }
 

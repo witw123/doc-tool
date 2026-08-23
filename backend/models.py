@@ -121,23 +121,17 @@ class CompareResponse(BaseModel):
     diff_items: List[DiffItem] = Field(default_factory=list)
 
 
-class BrowseItem(BaseModel):
-    name: str
-    path: str
-    is_dir: bool
-    size: Optional[int] = None
-    mtime: Optional[str] = None
-
-
-class BrowseResponse(BaseModel):
-    success: bool
-    current_path: str
-    parent_path: Optional[str] = None
-    items: List[BrowseItem] = Field(default_factory=list)
-
-
 class OpenFolderRequest(BaseModel):
     path: str
+
+
+class SelectFolderRequest(BaseModel):
+    initial_path: Optional[str] = None
+
+
+class SelectFolderResponse(BaseModel):
+    selected: bool
+    path: Optional[str] = None
 
 
 class FilenameExportRequest(BaseModel):

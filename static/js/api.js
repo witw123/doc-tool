@@ -41,11 +41,10 @@ async function apiCompareDirectories(payload) {
   });
 }
 
-// Browse server directories
-async function apiBrowseDirectory(path = null) {
-  const query = path ? `?path=${encodeURIComponent(path)}` : '';
-  return await fetchJSON(`/api/browse${query}`, {
-    method: 'GET'
+async function apiSelectLocalFolder(initialPath = '') {
+  return await fetchJSON('/api/select-local-folder', {
+    method: 'POST',
+    body: JSON.stringify({ initial_path: initialPath || null }),
   });
 }
 
@@ -101,7 +100,7 @@ async function apiCheckHealth() {
 
 window.apiScanDirectory = apiScanDirectory;
 window.apiCompareDirectories = apiCompareDirectories;
-window.apiBrowseDirectory = apiBrowseDirectory;
+window.apiSelectLocalFolder = apiSelectLocalFolder;
 window.apiOpenSystemFolder = apiOpenSystemFolder;
 window.apiExportFilenameXlsx = apiExportFilenameXlsx;
 window.apiPreviewFilename = apiPreviewFilename;

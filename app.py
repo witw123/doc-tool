@@ -2,7 +2,7 @@
 FileScope Web - Server Launcher Script
 Usage:
     python app.py
-    python app.py --port 8080 --host 0.0.0.0
+    python app.py --port 8080
 """
 import os
 import sys
@@ -19,7 +19,6 @@ from tests.make_mock_data import create_mock_environment
 
 def main():
     parser = argparse.ArgumentParser(description="FileScope Web - High Performance Filename Diff & Stats Tool")
-    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host address to bind (default: 0.0.0.0)")
     parser.add_argument("--port", type=int, default=8000, help="Port to listen on (default: 8000)")
     parser.add_argument("--reload", action="store_true", help="Enable auto-reload on code changes")
     parser.add_argument("--no-mock", action="store_true", help="Skip creating mock demo test folders")
@@ -34,10 +33,10 @@ def main():
     print("\n" + "="*60)
     print(" 🚀 FileScope Web is starting!")
     print(f" 📡 Local URL:   http://localhost:{args.port}")
-    print(f" 🌐 Network URL: http://{args.host}:{args.port}")
+    print(" Native folder picker: enabled for this local Windows session")
     print("="*60 + "\n")
 
-    uvicorn.run("backend.main:app", host=args.host, port=args.port, reload=args.reload)
+    uvicorn.run("backend.main:app", host="127.0.0.1", port=args.port, reload=args.reload)
 
 if __name__ == "__main__":
     main()

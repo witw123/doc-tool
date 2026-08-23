@@ -1,6 +1,6 @@
-# FileScope - 轻量化文件名比对与统计工具 (Server Web Edition)
+# FileScope - 本地文件名比对与统计工具
 
-`FileScope` 是一套专为服务器环境设计的轻量化、高性能文件名分析与比对 Web 工具。支持对海量文件进行前缀分类统计、最深层（叶子）目录统计与合计、以及跨目录文件名差异精准筛查与跟踪。
+`FileScope` 是运行在用户电脑上的本地文件名分析与比对工具。页面中的所有“选择本地文件夹”按钮都会打开当前 Windows 会话的原生目录选择窗口，并将所选目录的完整绝对路径用于扫描、比对和导出。
 
 ---
 
@@ -36,7 +36,7 @@
 4. **极简部署与现代化交互**
    - **零重型依赖**：基于 Python FastAPI + 原生异步文件系统扫描，单命令即可启动。
    - **Anti-AI-Slop 现代化 UI**：深空暗色 (OLED) 与清新明亮双主题，流畅响应式交互，分页虚拟列表支持上万条数据极速渲染。
-   - **内置服务器目录浏览器**：可视化点击服务器磁盘与路径，免去手动输入长路径的繁琐。
+   - **Windows 原生目录选择**：直接选择用户电脑上的文件夹，保留完整绝对路径，并可从结果表中打开资源管理器。
 
 ---
 
@@ -50,20 +50,10 @@ pip install -r requirements.txt
 # 2. 启动服务 (默认端口 8000)
 python app.py
 
-# 指定端口与监听地址
-python app.py --host 0.0.0.0 --port 8080
+# 指定端口
+python app.py --port 8080
 ```
-访问浏览器：`http://服务器IP:8000`
-
-### 方式二：Docker 容器化部署
-```bash
-# 构建并运行
-docker compose up -d
-
-# 或使用 docker run
-docker build -t filescope .
-docker run -d -p 8000:8000 -v /your/data/path:/data:ro filescope
-```
+访问浏览器：`http://127.0.0.1:8000`。原生目录选择窗口属于启动 FileScope 的当前 Windows 用户会话，因此本项目不再按远程服务器或容器化网页使用。
 
 ---
 
@@ -76,13 +66,13 @@ e:/code/doc tool/
 │   ├── models.py            # Pydantic 请求与响应数据模型
 │   ├── scanner.py           # 单目录前缀与叶子目录分析引擎
 │   ├── comparator.py        # 双目录文件名差异比对引擎
-│   └── file_browser.py      # 服务器目录浏览辅助
+│   └── folder_picker.py     # 本机原生文件夹选择
 ├── static/
 │   ├── index.html           # 现代化 SPA 单页结构
 │   ├── css/
 │   │   └── style.css        # 精美暗色/明亮设计系统
 │   └── js/
-│       ├── app.js           # 协调器、主题与目录选择弹窗
+│       ├── app.js           # 协调器、主题与本机目录选择
 │       ├── api.js           # REST API 通信模块
 │       ├── stats_view.js    # 统计面板、前缀标签与叶子表格
 │       ├── diff_view.js     # 比对面板、筛选、分页与导出
@@ -91,9 +81,7 @@ e:/code/doc tool/
 │   ├── make_mock_data.py    # 模拟测试目录生成器
 │   └── test_engine.py       # 自动化单元测试
 ├── app.py                   # 启动入口脚本
-├── requirements.txt         # 核心依赖清单
-├── Dockerfile               # 容器镜像定义
-└── docker-compose.yml       # Docker Compose 编排
+└── requirements.txt         # 核心依赖清单
 ```
 
 ---
@@ -104,7 +92,7 @@ e:/code/doc tool/
 | :--- | :--- | :--- |
 | `POST` | `/api/scan` | 单目录统计：计算前缀命中、叶子目录清单与聚合汇总 |
 | `POST` | `/api/compare` | 双目录比对：根据模式比对目录A与B，返回差异状态项与汇总指标 |
-| `GET` | `/api/browse?path=...` | 服务器目录浏览：列出指定路径下的子目录与文件 |
+| `POST` | `/api/select-local-folder` | 打开本机原生文件夹选择窗口并返回完整绝对路径 |
 | `POST` | `/api/open-system-folder` | 在运行服务的主机系统文件管理器中打开目录；统计与对比清单中的路径均支持点击唤起 |
 | `POST` | `/api/export-filename-xlsx` | 按自定义分隔符拆分叶子目录文件名并导出 Excel 工作簿 |
-| `GET` | `/api/health` | 服务器健康状态与环境信息查询 |
+| `GET` | `/api/health` | 本地服务健康状态与环境信息查询 |
