@@ -270,25 +270,25 @@ export function DiffView({ initialDirA = '', initialDirB = '' }: DiffViewProps) 
         {/* Mode Selector & Flags */}
         <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
           {/* Mode Selector */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-[var(--text-secondary)]">比对模式:</span>
-            <div className="flex items-center p-1 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold text-[var(--text-secondary)] shrink-0">比对模式:</span>
+            <div className="flex flex-wrap sm:flex-nowrap items-center p-1 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)] overflow-x-auto">
               <button
                 type="button"
                 onClick={() => setMode('prefix_strip')}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition-all ${
                   mode === 'prefix_strip'
                     ? 'bg-indigo-600 text-white shadow-sm'
                     : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
               >
-                <Sparkles className="w-3.5 h-3.5" />
+                <Sparkles className="w-3.5 h-3.5 shrink-0" />
                 <span>按名字前缀比对 (默认推荐)</span>
               </button>
               <button
                 type="button"
                 onClick={() => setMode('relative_path')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition-all ${
                   mode === 'relative_path'
                     ? 'bg-indigo-600 text-white shadow-sm'
                     : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
@@ -299,7 +299,7 @@ export function DiffView({ initialDirA = '', initialDirB = '' }: DiffViewProps) 
               <button
                 type="button"
                 onClick={() => setMode('filename_only')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition-all ${
                   mode === 'filename_only'
                     ? 'bg-indigo-600 text-white shadow-sm'
                     : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'

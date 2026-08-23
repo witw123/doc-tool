@@ -63,11 +63,11 @@ export function LeafDirectoryTable({
 
         <div className="flex flex-wrap items-center gap-3">
           {/* Switcher */}
-          <div className="flex items-center p-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+          <div className="flex flex-wrap sm:flex-nowrap items-center p-1 rounded-lg bg-[var(--bg-input)] border border-[var(--border-subtle)] overflow-x-auto">
             <button
               type="button"
               onClick={() => setViewMode('leaf_only')}
-              className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${
+              className={`px-3 py-1 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 transition-all ${
                 viewMode === 'leaf_only'
                   ? 'bg-indigo-600 text-white shadow-sm'
                   : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
@@ -78,7 +78,7 @@ export function LeafDirectoryTable({
             <button
               type="button"
               onClick={() => setViewMode('all')}
-              className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${
+              className={`px-3 py-1 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 transition-all ${
                 viewMode === 'all'
                   ? 'bg-indigo-600 text-white shadow-sm'
                   : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
