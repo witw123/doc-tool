@@ -214,17 +214,17 @@ export function DiffTable({ diffItems, summary }: DiffTableProps) {
 
       {/* Table */}
       <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
-        <table className="w-full text-left text-xs border-collapse">
+        <table className="min-w-[960px] w-full text-left text-xs border-collapse">
           <thead className="sticky top-0 z-10 bg-[var(--bg-surface-elevated)] text-[var(--text-secondary)] font-semibold shadow-sm">
             <tr className="border-b border-[var(--border-subtle)]">
-              <th className="py-3 px-3 w-12 text-center">#</th>
-              <th className="py-3 px-4">文件名</th>
-              <th className="py-3 px-4 w-32">比对状态</th>
-              <th className="py-3 px-4">目录 A 相对路径</th>
-              <th className="py-3 px-4">目录 B 相对路径</th>
-              <th className="py-3 px-4 text-right w-24">A 大小</th>
-              <th className="py-3 px-4 text-right w-24">B 大小</th>
-              <th className="py-3 px-4">差异判定原因</th>
+              <th className="py-3 px-3 w-12 text-center whitespace-nowrap">#</th>
+              <th className="py-3 px-4 min-w-[160px] whitespace-nowrap">文件名</th>
+              <th className="py-3 px-4 w-36 whitespace-nowrap">比对状态</th>
+              <th className="py-3 px-4 min-w-[180px] whitespace-nowrap">目录 A 相对路径</th>
+              <th className="py-3 px-4 min-w-[180px] whitespace-nowrap">目录 B 相对路径</th>
+              <th className="py-3 px-4 text-right w-24 whitespace-nowrap">A 大小</th>
+              <th className="py-3 px-4 text-right w-24 whitespace-nowrap">B 大小</th>
+              <th className="py-3 px-4 min-w-[180px] whitespace-nowrap">差异判定原因</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border-subtle)]">
@@ -240,13 +240,13 @@ export function DiffTable({ diffItems, summary }: DiffTableProps) {
                   key={`${item.id}-${idx}`}
                   className="hover:bg-[var(--bg-surface-hover)]/60 transition-colors"
                 >
-                  <td className="py-3 px-3 text-center font-mono text-[11px] text-[var(--text-muted)]">
+                  <td className="py-3 px-3 text-center font-mono text-[11px] text-[var(--text-muted)] whitespace-nowrap">
                     {(currentPage - 1) * pageSize + idx + 1}
                   </td>
-                  <td className="py-3 px-4 font-mono font-bold text-[var(--text-primary)]">
+                  <td className="py-3 px-4 font-mono font-bold text-[var(--text-primary)] whitespace-nowrap">
                     {item.filename}
                   </td>
-                  <td className="py-3 px-4">
+                  <td className="py-3 px-4 whitespace-nowrap">
                     {getStatusBadge(item.status, item.status_label)}
                   </td>
                   <td className="py-3 px-4">
@@ -267,10 +267,10 @@ export function DiffTable({ diffItems, summary }: DiffTableProps) {
                       <span className="text-[var(--text-muted)]">-</span>
                     )}
                   </td>
-                  <td className="py-3 px-4 text-right font-mono text-[var(--text-secondary)]">
+                  <td className="py-3 px-4 text-right font-mono text-[var(--text-secondary)] whitespace-nowrap">
                     {item.size_a_formatted || '-'}
                   </td>
-                  <td className="py-3 px-4 text-right font-mono text-[var(--text-secondary)]">
+                  <td className="py-3 px-4 text-right font-mono text-[var(--text-secondary)] whitespace-nowrap">
                     {item.size_b_formatted || '-'}
                   </td>
                   <td className="py-3 px-4 text-[var(--text-secondary)]">

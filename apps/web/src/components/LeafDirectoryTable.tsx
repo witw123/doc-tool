@@ -112,17 +112,17 @@ export function LeafDirectoryTable({
 
       {/* Table */}
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs border-collapse">
+        <table className="min-w-[860px] w-full text-left text-xs border-collapse">
           <thead>
             <tr className="border-b border-[var(--border-subtle)] bg-[var(--bg-surface-elevated)] text-[var(--text-secondary)] font-semibold">
-              <th className="py-3 px-3 w-10 text-center">#</th>
-              <th className="py-3 px-4">目录相对路径</th>
-              <th className="py-3 px-4 text-center w-20">层级深度</th>
-              <th className="py-3 px-4 text-center w-24">类型</th>
-              <th className="py-3 px-4 text-right">文件数量</th>
-              <th className="py-3 px-4 text-right">总空间占用</th>
-              <th className="py-3 px-4">格式分布</th>
-              <th className="py-3 px-3 w-12 text-center">明细</th>
+              <th className="py-3 px-3 w-12 text-center whitespace-nowrap">#</th>
+              <th className="py-3 px-4 min-w-[200px] whitespace-nowrap">目录相对路径</th>
+              <th className="py-3 px-4 text-center w-24 whitespace-nowrap">层级深度</th>
+              <th className="py-3 px-4 text-center w-28 whitespace-nowrap">类型</th>
+              <th className="py-3 px-4 text-right w-28 whitespace-nowrap">文件数量</th>
+              <th className="py-3 px-4 text-right w-28 whitespace-nowrap">总空间占用</th>
+              <th className="py-3 px-4 min-w-[160px] whitespace-nowrap">格式分布</th>
+              <th className="py-3 px-3 w-14 text-center whitespace-nowrap">明细</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border-subtle)]">
@@ -142,7 +142,7 @@ export function LeafDirectoryTable({
                       onClick={() => toggleExpand(item.path)}
                       className="hover:bg-[var(--bg-surface-hover)]/60 cursor-pointer transition-colors"
                     >
-                      <td className="py-3 px-3 text-center font-mono text-[11px] text-[var(--text-muted)]">
+                      <td className="py-3 px-3 text-center font-mono text-[11px] text-[var(--text-muted)] whitespace-nowrap">
                         {idx + 1}
                       </td>
                       <td className="py-3 px-4">
@@ -150,24 +150,24 @@ export function LeafDirectoryTable({
                           {item.rel_path}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-center font-mono text-[var(--text-secondary)]">
+                      <td className="py-3 px-4 text-center font-mono text-[var(--text-secondary)] whitespace-nowrap">
                         L{item.depth}
                       </td>
-                      <td className="py-3 px-4 text-center">
+                      <td className="py-3 px-4 text-center whitespace-nowrap">
                         {item.is_leaf ? (
-                          <span className="status-badge badge-exact text-[10px]">
+                          <span className="status-badge badge-exact text-[10px] whitespace-nowrap shrink-0">
                             叶子目录
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold tag-badge">
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold tag-badge whitespace-nowrap shrink-0">
                             中间分支
                           </span>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-right font-mono font-bold text-[var(--text-primary)]">
+                      <td className="py-3 px-4 text-right font-mono font-bold text-[var(--text-primary)] whitespace-nowrap">
                         {item.file_count.toLocaleString()}
                       </td>
-                      <td className="py-3 px-4 text-right font-mono text-[var(--text-secondary)]">
+                      <td className="py-3 px-4 text-right font-mono text-[var(--text-secondary)] whitespace-nowrap">
                         {item.size_formatted}
                       </td>
                       <td className="py-3 px-4">
@@ -175,14 +175,14 @@ export function LeafDirectoryTable({
                           {Object.entries(item.extensions).slice(0, 3).map(([ext, count]) => (
                             <span
                               key={ext}
-                              className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-[var(--bg-input)] text-[var(--text-muted)] border border-[var(--border-subtle)]"
+                              className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-[var(--bg-input)] text-[var(--text-muted)] border border-[var(--border-subtle)] whitespace-nowrap"
                             >
                               {ext} ({count})
                             </span>
                           ))}
                         </div>
                       </td>
-                      <td className="py-3 px-3 text-center text-[var(--text-muted)]">
+                      <td className="py-3 px-3 text-center text-[var(--text-muted)] whitespace-nowrap">
                         {isExpanded ? (
                           <ChevronDown className="w-4 h-4 mx-auto text-brand-accent" />
                         ) : (

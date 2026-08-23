@@ -79,16 +79,16 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
 
       {/* Table */}
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs border-collapse">
+        <table className="min-w-[800px] w-full text-left text-xs border-collapse">
           <thead>
             <tr className="border-b border-[var(--border-subtle)] bg-[var(--bg-surface-elevated)] text-[var(--text-secondary)] font-semibold">
-              <th className="py-3 px-3 w-10 text-center">#</th>
-              <th className="py-3 px-4">前缀名称 / 标签</th>
-              <th className="py-3 px-4 text-right">匹配文件数</th>
-              <th className="py-3 px-4 w-48">文件数占比</th>
-              <th className="py-3 px-4 text-right">总空间占用</th>
-              <th className="py-3 px-4">主要格式分布</th>
-              <th className="py-3 px-3 w-12 text-center">样本</th>
+              <th className="py-3 px-3 w-12 text-center whitespace-nowrap">#</th>
+              <th className="py-3 px-4 min-w-[180px] whitespace-nowrap">前缀名称 / 标签</th>
+              <th className="py-3 px-4 text-right w-28 whitespace-nowrap">匹配文件数</th>
+              <th className="py-3 px-4 w-44 whitespace-nowrap">文件数占比</th>
+              <th className="py-3 px-4 text-right w-28 whitespace-nowrap">总空间占用</th>
+              <th className="py-3 px-4 min-w-[160px] whitespace-nowrap">主要格式分布</th>
+              <th className="py-3 px-3 w-14 text-center whitespace-nowrap">样本</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border-subtle)]">
@@ -109,12 +109,12 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
                       onClick={() => toggleExpand(item.prefix)}
                       className="hover:bg-[var(--bg-surface-hover)]/60 cursor-pointer transition-colors"
                     >
-                      <td className="py-3 px-3 text-center font-mono text-[11px] text-[var(--text-muted)]">
+                      <td className="py-3 px-3 text-center font-mono text-[11px] text-[var(--text-muted)] whitespace-nowrap">
                         {idx + 1}
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4 whitespace-nowrap">
                         <span
-                          className={`font-mono font-bold px-2 py-0.5 rounded-md text-xs border ${
+                          className={`font-mono font-bold px-2.5 py-0.5 rounded-md text-xs border whitespace-nowrap inline-flex items-center shrink-0 ${
                             isUnassigned
                               ? 'bg-[var(--bg-surface-elevated)] text-[var(--text-muted)] border-[var(--border-subtle)]'
                               : 'tag-badge'
@@ -123,23 +123,23 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
                           {item.prefix}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-right font-mono font-semibold text-[var(--text-primary)]">
+                      <td className="py-3 px-4 text-right font-mono font-semibold text-[var(--text-primary)] whitespace-nowrap">
                         {item.match_count.toLocaleString()}
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4 whitespace-nowrap">
                         <div className="flex items-center gap-2">
-                          <div className="flex-1 h-2 rounded-full bg-[var(--bg-input)] overflow-hidden border border-[var(--border-subtle)]">
+                          <div className="flex-1 h-2 rounded-full bg-[var(--bg-input)] overflow-hidden border border-[var(--border-subtle)] min-w-[60px]">
                             <div
                               className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-cyan-500 transition-all duration-300"
                               style={{ width: `${Math.min(item.percentage, 100)}%` }}
                             />
                           </div>
-                          <span className="font-mono text-[11px] text-[var(--text-secondary)] w-12 text-right">
+                          <span className="font-mono text-[11px] text-[var(--text-secondary)] w-12 text-right shrink-0">
                             {item.percentage}%
                           </span>
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-right font-mono text-[var(--text-secondary)]">
+                      <td className="py-3 px-4 text-right font-mono text-[var(--text-secondary)] whitespace-nowrap">
                         {item.size_formatted}
                       </td>
                       <td className="py-3 px-4">
@@ -147,19 +147,19 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
                           {Object.entries(item.extensions).slice(0, 4).map(([ext, count]) => (
                             <span
                               key={ext}
-                              className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-[var(--bg-input)] text-[var(--text-muted)] border border-[var(--border-subtle)]"
+                              className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-[var(--bg-input)] text-[var(--text-muted)] border border-[var(--border-subtle)] whitespace-nowrap"
                             >
                               {ext} ({count})
                             </span>
                           ))}
                           {Object.keys(item.extensions).length > 4 && (
-                            <span className="text-[10px] text-[var(--text-muted)]">
+                            <span className="text-[10px] text-[var(--text-muted)] whitespace-nowrap">
                               +{Object.keys(item.extensions).length - 4} 种
                             </span>
                           )}
                         </div>
                       </td>
-                      <td className="py-3 px-3 text-center text-[var(--text-muted)]">
+                      <td className="py-3 px-3 text-center text-[var(--text-muted)] whitespace-nowrap">
                         {isExpanded ? (
                           <ChevronDown className="w-4 h-4 mx-auto text-brand-accent" />
                         ) : (

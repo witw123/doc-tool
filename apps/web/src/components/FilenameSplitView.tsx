@@ -644,10 +644,10 @@ export function FilenameSplitView({ initialPath = '' }: FilenameSplitViewProps) 
           </div>
 
           <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead className="sticky top-0 z-10 bg-[var(--bg-surface-elevated)] text-[var(--text-secondary)] font-semibold shadow-sm">
-                <tr className="border-b border-[var(--border-subtle)]">
-                  <th className="py-3 px-3 w-12 text-center">#</th>
+            <table className="min-w-[860px] w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-[var(--border-subtle)] bg-[var(--bg-surface-elevated)] text-[var(--text-secondary)] font-semibold">
+                  <th className="py-3 px-3 w-12 text-center whitespace-nowrap">#</th>
                   {previewResult.headers.map((h, i) => (
                     <th key={i} className="py-3 px-4 whitespace-nowrap">
                       {h}
@@ -675,14 +675,14 @@ export function FilenameSplitView({ initialPath = '' }: FilenameSplitViewProps) 
                         key={rowIdx}
                         className="hover:bg-[var(--bg-surface-hover)]/60 transition-colors"
                       >
-                        <td className="py-3 px-3 text-center font-mono text-[11px] text-[var(--text-muted)]">
+                        <td className="py-3 px-3 text-center font-mono text-[11px] text-[var(--text-muted)] whitespace-nowrap">
                           {rowIdx + 1}
                         </td>
                         {row.map((cell, cellIdx) => {
                           // First column is relative path
                           if (cellIdx === 0) {
                             return (
-                              <td key={cellIdx} className="py-3 px-4">
+                              <td key={cellIdx} className="py-3 px-4 min-w-[200px]">
                                 <span className="font-mono text-cyan-accent break-all font-semibold">
                                   {cell}
                                 </span>
@@ -693,9 +693,9 @@ export function FilenameSplitView({ initialPath = '' }: FilenameSplitViewProps) 
                           // Last column is status
                           if (cellIdx === row.length - 1) {
                             return (
-                              <td key={cellIdx} className="py-3 px-4">
+                              <td key={cellIdx} className="py-3 px-4 whitespace-nowrap">
                                 <span
-                                  className={`status-badge ${
+                                  className={`status-badge whitespace-nowrap shrink-0 ${
                                     isMatched ? 'badge-exact' : 'badge-only-a'
                                   }`}
                                 >
@@ -709,7 +709,7 @@ export function FilenameSplitView({ initialPath = '' }: FilenameSplitViewProps) 
                           // Third column is raw filename
                           if (cellIdx === 2) {
                             return (
-                              <td key={cellIdx} className="py-3 px-4 font-mono font-bold text-[var(--text-primary)]">
+                              <td key={cellIdx} className="py-3 px-4 font-mono font-bold text-[var(--text-primary)] whitespace-nowrap">
                                 {cell}
                               </td>
                             );
