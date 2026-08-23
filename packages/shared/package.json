@@ -1,0 +1,17 @@
+{
+  "name": "@doc-tool/shared",
+  "version": "1.0.0",
+  "description": "Shared models, DTOs, and utility functions for FileScope",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rimraf dist"
+  },
+  "keywords": ["shared", "contracts"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

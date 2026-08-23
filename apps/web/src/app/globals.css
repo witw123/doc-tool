@@ -1,0 +1,263 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-base: #090a0f;
+  --bg-surface: #11141d;
+  --bg-surface-elevated: #181d2a;
+  --bg-surface-hover: #22293b;
+  --bg-input: #0c0e15;
+
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --border-hover: rgba(255, 255, 255, 0.2);
+  --border-active: rgba(99, 102, 241, 0.6);
+
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+
+  --accent-primary: #6366f1;
+  --accent-hover: #4f46e5;
+  --accent-light: rgba(99, 102, 241, 0.15);
+  --accent-glow: rgba(99, 102, 241, 0.25);
+
+  --color-brand: #818cf8;
+  --color-cyan: #38bdf8;
+  --color-emerald: #34d399;
+  --color-amber: #fbbf24;
+  --color-rose: #f87171;
+
+  --tag-bg: rgba(99, 102, 241, 0.15);
+  --tag-text: #a5b4fc;
+  --tag-border: rgba(99, 102, 241, 0.3);
+
+  --badge-exact-bg: rgba(16, 185, 129, 0.15);
+  --badge-exact-text: #34d399;
+  --badge-exact-border: rgba(16, 185, 129, 0.3);
+
+  --badge-warn-bg: rgba(245, 158, 11, 0.15);
+  --badge-warn-text: #fbbf24;
+  --badge-warn-border: rgba(245, 158, 11, 0.3);
+
+  --badge-danger-bg: rgba(239, 68, 68, 0.15);
+  --badge-danger-text: #f87171;
+  --badge-danger-border: rgba(239, 68, 68, 0.3);
+
+  --badge-cyan-bg: rgba(6, 182, 212, 0.15);
+  --badge-cyan-text: #38bdf8;
+  --badge-cyan-border: rgba(6, 182, 212, 0.3);
+}
+
+[data-theme='light'] {
+  --bg-base: #f1f5f9;
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: #f8fafc;
+  --bg-surface-hover: #e2e8f0;
+  --bg-input: #ffffff;
+
+  --border-subtle: #cbd5e1;
+  --border-hover: #94a3b8;
+  --border-active: #4f46e5;
+
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+
+  --accent-primary: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-light: rgba(79, 70, 229, 0.1);
+  --accent-glow: rgba(79, 70, 229, 0.2);
+
+  --color-brand: #4338ca;
+  --color-cyan: #0284c7;
+  --color-emerald: #059669;
+  --color-amber: #d97706;
+  --color-rose: #dc2626;
+
+  --tag-bg: #e0e7ff;
+  --tag-text: #3730a3;
+  --tag-border: #c7d2fe;
+
+  --badge-exact-bg: #d1fae5;
+  --badge-exact-text: #065f46;
+  --badge-exact-border: #a7f3d0;
+
+  --badge-warn-bg: #fef3c7;
+  --badge-warn-text: #92400e;
+  --badge-warn-border: #fde68a;
+
+  --badge-danger-bg: #fee2e2;
+  --badge-danger-text: #991b1b;
+  --badge-danger-border: #fecaca;
+
+  --badge-cyan-bg: #e0f2fe;
+  --badge-cyan-text: #075985;
+  --badge-cyan-border: #bae6fd;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+  letter-spacing: -0.01em;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-hover);
+}
+
+/* Panel Styles */
+.glass-panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 1rem;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.08), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.glass-panel:hover {
+  border-color: var(--border-hover);
+}
+
+/* Interactive Inputs */
+.interactive-input {
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  border-radius: 0.75rem;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.interactive-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.85;
+}
+
+.interactive-input:hover {
+  border-color: var(--border-hover);
+}
+
+.interactive-input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px var(--accent-light);
+  outline: none;
+}
+
+/* Button & Action Pills */
+.action-btn-primary {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  color: #ffffff;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+}
+
+.action-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.35);
+  transform: translateY(-1px);
+}
+
+.action-btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.action-btn-success {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #ffffff;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+}
+
+.action-btn-success:hover:not(:disabled) {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.35);
+  transform: translateY(-1px);
+}
+
+/* Semantic Status Badges */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.badge-exact {
+  background-color: var(--badge-exact-bg);
+  color: var(--badge-exact-text);
+  border: 1px solid var(--badge-exact-border);
+}
+
+.badge-only-a {
+  background-color: var(--badge-warn-bg);
+  color: var(--badge-warn-text);
+  border: 1px solid var(--badge-warn-border);
+}
+
+.badge-only-b {
+  background-color: var(--badge-danger-bg);
+  color: var(--badge-danger-text);
+  border: 1px solid var(--badge-danger-border);
+}
+
+.badge-diff {
+  background-color: var(--badge-cyan-bg);
+  color: var(--badge-cyan-text);
+  border: 1px solid var(--badge-cyan-border);
+}
+
+/* Dynamic Accent Colors */
+.text-brand-accent {
+  color: var(--color-brand);
+}
+
+.text-cyan-accent {
+  color: var(--color-cyan);
+}
+
+.text-emerald-accent {
+  color: var(--color-emerald);
+}
+
+.text-amber-accent {
+  color: var(--color-amber);
+}
+
+.text-rose-accent {
+  color: var(--color-rose);
+}
+
+.tag-badge {
+  background-color: var(--tag-bg);
+  color: var(--tag-text);
+  border: 1px solid var(--tag-border);
+}

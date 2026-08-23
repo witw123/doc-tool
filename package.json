@@ -1,0 +1,29 @@
+{
+  "name": "doc-tool-monorepo",
+  "version": "2.0.0",
+  "private": true,
+  "description": "FileScope - Monorepo for Next.js web client, NestJS server, and shared contracts",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces",
+    "dev:server": "npm run dev --workspace=apps/server",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "build": "npm run build --workspaces",
+    "build:shared": "npm run build --workspace=packages/shared",
+    "build:server": "npm run build --workspace=apps/server",
+    "build:web": "npm run build --workspace=apps/web",
+    "start:server": "npm run start:prod --workspace=apps/server",
+    "start:web": "npm run start --workspace=apps/web"
+  },
+  "keywords": [
+    "monorepo",
+    "nextjs",
+    "nestjs",
+    "filescope"
+  ],
+  "author": "",
+  "license": "MIT"
+}

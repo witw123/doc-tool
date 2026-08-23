@@ -1,3 +1,0 @@
-"""
-FileScope backend package.
-"""
