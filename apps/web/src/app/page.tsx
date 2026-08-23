@@ -16,17 +16,21 @@ export default function HomePage() {
   const [diffPresetDirA, setDiffPresetDirA] = useState('');
   const [diffPresetDirB, setDiffPresetDirB] = useState('');
   const [splitPresetPath, setSplitPresetPath] = useState('');
+  const [mockTriggerKey, setMockTriggerKey] = useState(0);
 
   const handleLoadMockPresets = () => {
-    const mockA = 'test_mock_env/folder_a';
-    const mockB = 'test_mock_env/folder_b';
+    const mockStats = 'test_mock_env/01_单一目录深度统计_样例';
+    const mockDiffA = 'test_mock_env/02_双目录比对_目录A';
+    const mockDiffB = 'test_mock_env/02_双目录比对_目录B';
+    const mockSplit = 'test_mock_env/03_文件名拆分导出_样例';
 
-    setStatsPresetPath(mockA);
-    setDiffPresetDirA(mockA);
-    setDiffPresetDirB(mockB);
-    setSplitPresetPath(mockA);
+    setStatsPresetPath(mockStats);
+    setDiffPresetDirA(mockDiffA);
+    setDiffPresetDirB(mockDiffB);
+    setSplitPresetPath(mockSplit);
+    setMockTriggerKey(Date.now());
 
-    showToast('已载入测试示例路径', 'success');
+    showToast('已一键载入测试示例并开始执行分析', 'success');
   };
 
   return (
@@ -41,11 +45,21 @@ export default function HomePage() {
 
       <main className="flex-1 max-w-[1680px] w-full mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6">
         {activeTab === 'stats' ? (
-          <StatsView initialPath={statsPresetPath} />
+          <StatsView
+            key={`stats_${mockTriggerKey}`}
+            initialPath={statsPresetPath}
+          />
         ) : activeTab === 'diff' ? (
-          <DiffView initialDirA={diffPresetDirA} initialDirB={diffPresetDirB} />
+          <DiffView
+            key={`diff_${mockTriggerKey}`}
+            initialDirA={diffPresetDirA}
+            initialDirB={diffPresetDirB}
+          />
         ) : (
-          <FilenameSplitView initialPath={splitPresetPath} />
+          <FilenameSplitView
+            key={`split_${mockTriggerKey}`}
+            initialPath={splitPresetPath}
+          />
         )}
       </main>
 

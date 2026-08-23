@@ -54,6 +54,38 @@ export function DiffView({ initialDirA = '', initialDirB = '' }: DiffViewProps) 
   const [loading, setLoading] = useState(false);
   const [compareResult, setCompareResult] = useState<CompareResponse | null>(null);
 
+  // Auto trigger comparison on preset load
+  React.useEffect(() => {
+    if (initialDirA && initialDirB) {
+      setFolderNameA(initialDirA);
+      setFolderNameB(initialDirB);
+      setFilesA(null);
+      setFilesB(null);
+
+      setLoading(true);
+      apiCompareDirectories({
+        dir_a: initialDirA.trim(),
+        dir_b: initialDirB.trim(),
+        mode,
+        compare_size: compareSize,
+        ignore_case: ignoreCase,
+      })
+        .then((res) => {
+          setCompareResult(res);
+          showToast(
+            `比对完成：共比对 ${res.summary.total_unique_items} 项，匹配率 ${res.summary.match_percentage}%`,
+            'success'
+          );
+        })
+        .catch((err) => {
+          showToast(`比对失败: ${err.message}`, 'error');
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    }
+  }, [initialDirA, initialDirB]);
+
   const handlePickFolderA = async () => {
     try {
       const result = await pickLocalFolder();

@@ -67,19 +67,16 @@ export async function exportLocalSplitExcel(
   if (layout === 'single_sheet') {
     const sheet = workbook.addWorksheet(safeSheetName('文件明细', usedNames));
     applySheetStyle(sheet, rows);
-  } else {
-    // Group rows by relative directory (column 0)
+    // Group rows by folder name (column 0)
     const grouped = new Map<string, string[][]>();
     for (const row of rows) {
-      const relDir = row[0] || '根目录';
-      if (!grouped.has(relDir)) grouped.set(relDir, []);
-      grouped.get(relDir)!.push(row);
+      const folderName = row[0] || '根目录';
+      if (!grouped.has(folderName)) grouped.set(folderName, []);
+      grouped.get(folderName)!.push(row);
     }
 
-    for (const [relDir, dirRows] of grouped.entries()) {
-      const parts = relDir.split('/');
-      const sheetName = parts[parts.length - 1] || '根目录';
-      const sheet = workbook.addWorksheet(safeSheetName(sheetName, usedNames));
+    for (const [folderName, dirRows] of grouped.entries()) {
+      const sheet = workbook.addWorksheet(safeSheetName(folderName, usedNames));
       applySheetStyle(sheet, dirRows);
     }
   }

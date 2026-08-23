@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import ExcelJS from 'exceljs';
 import {
+  SplitFieldItem,
   FilenamePreviewRequest,
   FilenamePreviewResponse,
   FilenameExportRequest,
@@ -24,7 +25,11 @@ export class SplitService {
     return target;
   }
 
-  private validateRequest(rawPath: string, fields: string[], delimiter: string): { targetPath: string; cleanedFields: string[] } {
+  private validateRequest(
+    rawPath: string,
+    rawFields: SplitFieldItem[],
+    requestBody?: any
+  ): { targetPath: string; validFields: SplitFieldItem[]; enabledFields: SplitFieldItem[] } {
     const trimmedPath = (rawPath || '').trim();
     if (!trimmedPath) {
       throw new BadRequestException('文件夹路径不能为空');
@@ -38,46 +43,99 @@ export class SplitService {
       throw new BadRequestException(`路径不是文件夹: ${trimmedPath}`);
     }
 
-    if (!delimiter) {
-      throw new BadRequestException('文件名分隔符不能为空');
+    let fields = rawFields;
+    if (!fields || !Array.isArray(fields) || fields.length === 0) {
+      if (requestBody?.fields && Array.isArray(requestBody.fields)) {
+        fields = requestBody.fields.map((f: any, idx: number) => ({
+          id: f.id || `f_${idx}`,
+          value: f.value || f.name || `字段${idx + 1}`,
+          enabled: f.enabled !== false,
+        }));
+      } else {
+        fields = [
+          { id: 'f_1', value: '项目', enabled: true },
+          { id: 'f_2', value: '_', enabled: false },
+          { id: 'f_3', value: '年份', enabled: true },
+          { id: 'f_4', value: '_', enabled: false },
+          { id: 'f_5', value: '序号', enabled: true },
+        ];
+      }
     }
 
-    const cleanedFields = (fields || []).map((f) => String(f).trim()).filter(Boolean);
-    if (cleanedFields.length === 0) {
-      throw new BadRequestException('至少需要配置一个文件名字段');
+    const enabledFields = fields.filter((f) => f.enabled);
+    if (enabledFields.length === 0) {
+      throw new BadRequestException('请至少开启一个需要导出的字段');
     }
 
-    const uniqueSet = new Set(cleanedFields);
-    if (uniqueSet.size !== cleanedFields.length) {
-      throw new BadRequestException('文件名字段不能重复');
-    }
-
-    return { targetPath, cleanedFields };
+    return { targetPath, validFields: fields, enabledFields };
   }
 
-  private splitFilename(filename: string, fields: string[], delimiter: string): { values: string[]; status: '匹配' | '不匹配' } {
+  private splitFilename(
+    filename: string,
+    fields: SplitFieldItem[]
+  ): { values: string[]; status: '匹配' | '不匹配' } {
     const lastDotIdx = filename.lastIndexOf('.');
     const stem = lastDotIdx > 0 ? filename.substring(0, lastDotIdx) : filename;
-    const parts = stem.split(delimiter);
-    const matched = parts.length === fields.length;
 
-    let values: string[] = [];
-    if (parts.length < fields.length) {
-      values = [...parts, ...new Array(fields.length - parts.length).fill('')];
-    } else {
-      values = [
-        ...parts.slice(0, fields.length - 1),
-        parts.slice(fields.length - 1).join(delimiter),
-      ];
+    let remaining = stem;
+    let matched = true;
+    const outputValues: string[] = [];
+
+    let i = 0;
+    while (i < fields.length) {
+      const current = fields[i]!;
+
+      // Find the next delimiter or terminating boundary
+      let nextDelim: string | null = null;
+      let nextDelimIdx = -1;
+
+      for (let j = i + 1; j < fields.length; j++) {
+        if (!fields[j]!.enabled || ['_', '-', '.', ' ', '/', '\\', '@', '#'].includes(fields[j]!.value)) {
+          nextDelim = fields[j]!.value;
+          nextDelimIdx = j;
+          break;
+        }
+      }
+
+      if (current.enabled) {
+        if (nextDelim && remaining.includes(nextDelim)) {
+          const splitIdx = remaining.indexOf(nextDelim);
+          const val = remaining.substring(0, splitIdx);
+          remaining = remaining.substring(splitIdx + nextDelim.length);
+          outputValues.push(val);
+          i = nextDelimIdx + 1;
+        } else if (i === fields.length - 1 || !nextDelim) {
+          outputValues.push(remaining);
+          remaining = '';
+          i += 1;
+        } else {
+          outputValues.push(remaining);
+          remaining = '';
+          matched = false;
+          i += 1;
+        }
+      } else {
+        // Disabled field acts as separator / skip token
+        if (current.value && remaining.startsWith(current.value)) {
+          remaining = remaining.substring(current.value.length);
+        } else if (current.value && remaining.includes(current.value)) {
+          const splitIdx = remaining.indexOf(current.value);
+          remaining = remaining.substring(splitIdx + current.value.length);
+        }
+        i += 1;
+      }
     }
 
-    return { values, status: matched ? '匹配' : '不匹配' };
+    if (remaining.length > 0) {
+      matched = false;
+    }
+
+    return { values: outputValues, status: matched ? '匹配' : '不匹配' };
   }
 
   private collectLeafRows(
     targetPath: string,
-    fields: string[],
-    delimiter: string
+    fields: SplitFieldItem[]
   ): { grouped: Map<string, string[][]>; fileCount: number; unmatchedCount: number } {
     const grouped = new Map<string, string[][]>();
     let fileCount = 0;
@@ -107,7 +165,6 @@ export class SplitService {
         }
       }
 
-      // Only leaf directories (directories with files and no subdirectories, or ignore root if root has subdirs)
       const isLeaf = subDirs.length === 0;
       if (isLeaf && files.length > 0) {
         const relDir = path.relative(targetPath, currentDir).replace(/\\/g, '/') || '(根目录)';
@@ -117,8 +174,8 @@ export class SplitService {
         const rows: string[][] = [];
 
         for (const filename of files) {
-          const { values, status } = this.splitFilename(filename, fields, delimiter);
-          rows.push([relDir, folderName, filename, ...values, status]);
+          const { values, status } = this.splitFilename(filename, fields);
+          rows.push([folderName, filename, ...values]);
           fileCount += 1;
           if (status === '不匹配') {
             unmatchedCount += 1;
@@ -149,23 +206,21 @@ export class SplitService {
   }
 
   preview(request: FilenamePreviewRequest): FilenamePreviewResponse {
-    const { targetPath, cleanedFields } = this.validateRequest(
+    const { targetPath, validFields, enabledFields } = this.validateRequest(
       request.path,
       request.fields,
-      request.delimiter
+      request
     );
 
-    const { grouped, fileCount, unmatchedCount } = this.collectLeafRows(
-      targetPath,
-      cleanedFields,
-      request.delimiter
-    );
+    const { grouped, fileCount, unmatchedCount } = this.collectLeafRows(targetPath, validFields);
 
     if (fileCount === 0) {
       throw new BadRequestException('未找到可预览的叶子文件夹文件');
     }
 
-    const headers = ['文件夹相对路径', '文件夹名称', '原始文件名', ...cleanedFields, '匹配状态'];
+    const enabledFieldNames = enabledFields.map((b) => b.value.trim() || '未命名');
+
+    const headers = ['文件夹名称', '原始文件名', ...enabledFieldNames];
     const rows: string[][] = [];
 
     const sortedKeys = Array.from(grouped.keys()).sort();
@@ -184,25 +239,25 @@ export class SplitService {
     };
   }
 
-  async exportXlsx(request: FilenameExportRequest): Promise<{ buffer: Buffer; filename: string; file_count: number; leaf_count: number }> {
-    const { targetPath, cleanedFields } = this.validateRequest(
+  async exportXlsx(
+    request: FilenameExportRequest
+  ): Promise<{ buffer: Buffer; filename: string; file_count: number; leaf_count: number }> {
+    const { targetPath, validFields, enabledFields } = this.validateRequest(
       request.path,
       request.fields,
-      request.delimiter
+      request
     );
 
     const layout = request.layout || 'grouped_sheets';
-    const { grouped, fileCount, unmatchedCount } = this.collectLeafRows(
-      targetPath,
-      cleanedFields,
-      request.delimiter
-    );
+    const { grouped, fileCount } = this.collectLeafRows(targetPath, validFields);
 
     if (fileCount === 0) {
       throw new BadRequestException('未找到可导出的叶子文件夹文件');
     }
 
-    const headers = ['文件夹相对路径', '文件夹名称', '原始文件名', ...cleanedFields, '匹配状态'];
+    const enabledFieldNames = enabledFields.map((b) => b.value.trim() || '未命名');
+
+    const headers = ['文件夹名称', '原始文件名', ...enabledFieldNames];
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'FileScope';
     workbook.created = new Date();

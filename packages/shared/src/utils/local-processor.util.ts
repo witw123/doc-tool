@@ -12,6 +12,7 @@ import {
 } from '../models/compare.model.js';
 import {
   FilenamePreviewResponse,
+  SplitFieldItem,
 } from '../models/split.model.js';
 import { formatBytes } from './format.util.js';
 import { clusterCommonPrefixes, FileEntryMeta } from './prefix.util.js';
@@ -664,20 +665,31 @@ export function processLocalFolderCompare(
 }
 
 /**
- * Process filename split preview for local files
+ * Process filename split preview for local files using unified SplitFieldItem list
+ */
+/**
+ * Process filename split preview for local files using unified SplitFieldItem list
  */
 export function processLocalFilenameSplit(
   folderName: string,
   files: LocalScannedFile[],
-  fields: string[],
-  delimiter: string
+  fields: SplitFieldItem[]
 ): FilenamePreviewResponse {
-  const cleanedFields = (fields || []).map((f) => String(f).trim()).filter(Boolean);
-  if (cleanedFields.length === 0) {
-    throw new Error('至少需要配置一个文件名字段');
+  if (!fields || fields.length === 0) {
+    throw new Error('请至少配置一个拆分字段');
   }
 
-  const headers = ['文件夹相对路径', '文件夹名称', '原始文件名', ...cleanedFields, '匹配状态'];
+  const enabledFields = fields.filter((f) => f.enabled);
+  if (enabledFields.length === 0) {
+    throw new Error('请至少开启一个需要导出的字段');
+  }
+
+  const headers = [
+    '文件夹名称',
+    '原始文件名',
+    ...enabledFields.map((f) => f.value.trim() || '未命名'),
+  ];
+
   const rows: string[][] = [];
   let unmatchedCount = 0;
   const leafDirs = new Set<string>();
@@ -685,17 +697,58 @@ export function processLocalFilenameSplit(
   for (const f of files) {
     const lastDotIdx = f.filename.lastIndexOf('.');
     const stem = lastDotIdx > 0 ? f.filename.substring(0, lastDotIdx) : f.filename;
-    const parts = stem.split(delimiter);
-    const matched = parts.length === cleanedFields.length;
 
-    let values: string[] = [];
-    if (parts.length < cleanedFields.length) {
-      values = [...parts, ...new Array(cleanedFields.length - parts.length).fill('')];
-    } else {
-      values = [
-        ...parts.slice(0, cleanedFields.length - 1),
-        parts.slice(cleanedFields.length - 1).join(delimiter),
-      ];
+    let remaining = stem;
+    let matched = true;
+    const outputValues: string[] = [];
+
+    let i = 0;
+    while (i < fields.length) {
+      const current = fields[i]!;
+
+      // Find the next delimiter or terminating boundary
+      let nextDelim: string | null = null;
+      let nextDelimIdx = -1;
+
+      for (let j = i + 1; j < fields.length; j++) {
+        if (!fields[j]!.enabled || ['_', '-', '.', ' ', '/', '\\', '@', '#'].includes(fields[j]!.value)) {
+          nextDelim = fields[j]!.value;
+          nextDelimIdx = j;
+          break;
+        }
+      }
+
+      if (current.enabled) {
+        if (nextDelim && remaining.includes(nextDelim)) {
+          const splitIdx = remaining.indexOf(nextDelim);
+          const val = remaining.substring(0, splitIdx);
+          remaining = remaining.substring(splitIdx + nextDelim.length);
+          outputValues.push(val);
+          i = nextDelimIdx + 1;
+        } else if (i === fields.length - 1 || !nextDelim) {
+          outputValues.push(remaining);
+          remaining = '';
+          i += 1;
+        } else {
+          outputValues.push(remaining);
+          remaining = '';
+          matched = false;
+          i += 1;
+        }
+      } else {
+        // Disabled field acts as separator / skip token
+        if (current.value && remaining.startsWith(current.value)) {
+          remaining = remaining.substring(current.value.length);
+        } else if (current.value && remaining.includes(current.value)) {
+          const splitIdx = remaining.indexOf(current.value);
+          remaining = remaining.substring(splitIdx + current.value.length);
+        }
+        i += 1;
+      }
+    }
+
+    if (remaining.length > 0) {
+      matched = false;
     }
 
     const relParts = f.relPath.replace(/\\/g, '/').split('/');
@@ -704,10 +757,9 @@ export function processLocalFilenameSplit(
 
     leafDirs.add(relDir);
 
-    const status = matched ? '匹配' : '不匹配';
     if (!matched) unmatchedCount += 1;
 
-    rows.push([relDir, folderNameLeaf, f.filename, ...values, status]);
+    rows.push([folderNameLeaf, f.filename, ...outputValues]);
   }
 
   return {
@@ -720,3 +772,4 @@ export function processLocalFilenameSplit(
     unmatched_count: unmatchedCount,
   };
 }
+
