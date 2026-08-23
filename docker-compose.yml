@@ -1,0 +1,12 @@
+services:
+  filescope:
+    build: .
+    container_name: filescope-web
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Map host directories you wish to analyze into container
+      - ./data:/data:ro
+    environment:
+      - PYTHONUNBUFFERED=1
