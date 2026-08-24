@@ -122,9 +122,11 @@ export class ScannerService {
           dirExtCounts[ext] = (dirExtCounts[ext] || 0) + 1;
           globalExtCounts[ext] = (globalExtCounts[ext] || 0) + 1;
 
+          const folderName = path.basename(dirPath) || path.basename(targetPath);
           const relFilePath = (relPath ? `${relPath}/${entry.name}` : entry.name).replace(/\\/g, '/');
           allScannedFiles.push({
             filename: entry.name,
+            folderName,
             relPath: relFilePath,
             size: fileSize,
             ext,
@@ -133,6 +135,7 @@ export class ScannerService {
           // User-specified prefixes matching
           const prefixFileEntry = {
             filename: entry.name,
+            folder_name: folderName,
             rel_path: relFilePath,
             size_bytes: fileSize,
             size_formatted: formatBytes(fileSize),
@@ -204,6 +207,8 @@ export class ScannerService {
         const count = userPrefixCounts[p] || 0;
         const sz = userPrefixSizes[p] || 0;
         const pct = totalFiles > 0 ? Number(((count / totalFiles) * 100).toFixed(2)) : 0;
+        const fList = userPrefixFiles[p] || [];
+        const uniqueFolders = Array.from(new Set(fList.map((f: any) => f.folder_name)));
 
         prefixStatItems.push({
           prefix: p,
@@ -213,12 +218,14 @@ export class ScannerService {
           percentage: pct,
           extensions: userPrefixExts[p] || {},
           sample_files: userPrefixSamples[p] || [],
-          files: userPrefixFiles[p] || [],
+          folders: uniqueFolders,
+          files: fList,
         });
       }
 
       if (unmatchedUserCount > 0) {
         const otherPct = totalFiles > 0 ? Number(((unmatchedUserCount / totalFiles) * 100).toFixed(2)) : 0;
+        const uniqueFolders = Array.from(new Set(unmatchedUserFiles.map((f: any) => f.folder_name)));
         prefixStatItems.push({
           prefix: '[其他/未匹配]',
           match_count: unmatchedUserCount,
@@ -227,6 +234,7 @@ export class ScannerService {
           percentage: otherPct,
           extensions: unmatchedUserExts,
           sample_files: unmatchedUserSamples,
+          folders: uniqueFolders,
           files: unmatchedUserFiles,
         });
       }
@@ -253,12 +261,15 @@ export class ScannerService {
           }
           fileList.push({
             filename: it.filename,
+            folder_name: it.folderName,
             rel_path: it.relPath,
             size_bytes: it.size,
             size_formatted: formatBytes(it.size),
             ext: it.ext,
           });
         }
+
+        const uniqueFolders = Array.from(new Set(fileList.map((f) => f.folder_name)));
 
         prefixStatItems.push({
           prefix: p,
@@ -268,6 +279,7 @@ export class ScannerService {
           percentage: pct,
           extensions: exts,
           sample_files: samples,
+          folders: uniqueFolders,
           files: fileList,
         });
 
@@ -290,12 +302,15 @@ export class ScannerService {
           }
           fileList.push({
             filename: it.filename,
+            folder_name: it.folderName,
             rel_path: it.relPath,
             size_bytes: it.size,
             size_formatted: formatBytes(it.size),
             ext: it.ext,
           });
         }
+
+        const uniqueFolders = Array.from(new Set(fileList.map((f) => f.folder_name)));
 
         prefixStatItems.push({
           prefix: '[无固定前缀]',
@@ -305,6 +320,7 @@ export class ScannerService {
           percentage: pct,
           extensions: exts,
           sample_files: samples,
+          folders: uniqueFolders,
           files: fileList,
         });
       }

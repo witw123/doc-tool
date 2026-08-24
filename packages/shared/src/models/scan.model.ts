@@ -1,5 +1,6 @@
 export interface PrefixFileItem {
   filename: string;
+  folder_name: string;
   rel_path: string;
   size_bytes: number;
   size_formatted: string;
@@ -14,6 +15,7 @@ export interface PrefixStatItem {
   percentage: number;
   extensions: Record<string, number>;
   sample_files: string[];
+  folders?: string[];
   files?: PrefixFileItem[];
 }
 

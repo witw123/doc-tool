@@ -105,8 +105,10 @@ export function processLocalFolderScan(
     dirMap.get(dirRelPath)!.push(file);
     dirSizes.set(dirRelPath, (dirSizes.get(dirRelPath) || 0) + file.size);
 
+    const dirFolder = parts.length > 1 ? parts[parts.length - 2]! : folderName;
     const prefixFileEntry: PrefixFileItem = {
       filename: file.filename,
+      folder_name: dirFolder,
       rel_path: normalizedRel,
       size_bytes: file.size,
       size_formatted: formatBytes(file.size),
@@ -191,6 +193,8 @@ export function processLocalFolderScan(
       const count = userPrefixCounts[p] || 0;
       const sz = userPrefixSizes[p] || 0;
       const pct = totalFiles > 0 ? Number(((count / totalFiles) * 100).toFixed(2)) : 0;
+      const fList = userPrefixFiles[p] || [];
+      const uniqueFolders = Array.from(new Set(fList.map((f) => f.folder_name)));
 
       prefixStatItems.push({
         prefix: p,
@@ -200,12 +204,14 @@ export function processLocalFolderScan(
         percentage: pct,
         extensions: userPrefixExts[p] || {},
         sample_files: userPrefixSamples[p] || [],
-        files: userPrefixFiles[p] || [],
+        folders: uniqueFolders,
+        files: fList,
       });
     }
 
     if (unmatchedUserCount > 0) {
       const otherPct = totalFiles > 0 ? Number(((unmatchedUserCount / totalFiles) * 100).toFixed(2)) : 0;
+      const uniqueFolders = Array.from(new Set(unmatchedUserFiles.map((f) => f.folder_name)));
       prefixStatItems.push({
         prefix: '[其他/未匹配]',
         match_count: unmatchedUserCount,
@@ -214,17 +220,24 @@ export function processLocalFolderScan(
         percentage: otherPct,
         extensions: unmatchedUserExts,
         sample_files: unmatchedUserSamples,
+        folders: uniqueFolders,
         files: unmatchedUserFiles,
       });
     }
   } else {
     // Automatic Clustering
-    const clusterMeta: FileEntryMeta[] = filteredFiles.map((f) => ({
-      filename: f.filename,
-      relPath: f.relPath,
-      size: f.size,
-      ext: f.ext,
-    }));
+    const clusterMeta: FileEntryMeta[] = filteredFiles.map((f) => {
+      const norm = f.relPath.replace(/\\/g, '/');
+      const pts = norm.split('/');
+      const fName = pts.length > 1 ? pts[pts.length - 2]! : folderName;
+      return {
+        filename: f.filename,
+        folderName: fName,
+        relPath: norm,
+        size: f.size,
+        ext: f.ext,
+      };
+    });
     const clusters = clusterCommonPrefixes(clusterMeta);
     const sortedKeys = Object.keys(clusters)
       .filter((k) => k !== '[无固定前缀]')
@@ -244,12 +257,15 @@ export function processLocalFolderScan(
         if (samples.length < 8) samples.push(it.relPath);
         fileList.push({
           filename: it.filename,
+          folder_name: it.folderName,
           rel_path: it.relPath,
           size_bytes: it.size,
           size_formatted: formatBytes(it.size),
           ext: it.ext,
         });
       }
+
+      const uniqueFolders = Array.from(new Set(fileList.map((f) => f.folder_name)));
 
       prefixStatItems.push({
         prefix: p,
@@ -259,6 +275,7 @@ export function processLocalFolderScan(
         percentage: pct,
         extensions: exts,
         sample_files: samples,
+        folders: uniqueFolders,
         files: fileList,
       });
 
@@ -279,12 +296,15 @@ export function processLocalFolderScan(
         if (samples.length < 8) samples.push(it.relPath);
         fileList.push({
           filename: it.filename,
+          folder_name: it.folderName,
           rel_path: it.relPath,
           size_bytes: it.size,
           size_formatted: formatBytes(it.size),
           ext: it.ext,
         });
       }
+
+      const uniqueFolders = Array.from(new Set(fileList.map((f) => f.folder_name)));
 
       prefixStatItems.push({
         prefix: '[无固定前缀]',
@@ -294,6 +314,7 @@ export function processLocalFolderScan(
         percentage: pct,
         extensions: exts,
         sample_files: samples,
+        folders: uniqueFolders,
         files: fileList,
       });
     }
