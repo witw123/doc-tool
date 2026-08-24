@@ -239,9 +239,7 @@ export function processLocalFolderScan(
       };
     });
     const clusters = clusterCommonPrefixes(clusterMeta);
-    const sortedKeys = Object.keys(clusters)
-      .filter((k) => k !== '[无固定前缀]')
-      .sort((a, b) => (clusters[b]?.length ?? 0) - (clusters[a]?.length ?? 0));
+    const sortedKeys = Object.keys(clusters).sort((a, b) => (clusters[b]?.length ?? 0) - (clusters[a]?.length ?? 0));
 
     for (const p of sortedKeys) {
       const items = clusters[p] || [];
@@ -280,43 +278,6 @@ export function processLocalFolderScan(
       });
 
       autoDiscoveredPrefixes.push(`${p} (${count}个)`);
-    }
-
-    if (clusters['[无固定前缀]']) {
-      const unassigned = clusters['[无固定前缀]']!;
-      const count = unassigned.length;
-      const sz = unassigned.reduce((acc, curr) => acc + curr.size, 0);
-      const pct = totalFiles > 0 ? Number(((count / totalFiles) * 100).toFixed(2)) : 0;
-
-      const exts: Record<string, number> = {};
-      const samples: string[] = [];
-      const fileList: PrefixFileItem[] = [];
-      for (const it of unassigned) {
-        exts[it.ext] = (exts[it.ext] || 0) + 1;
-        if (samples.length < 8) samples.push(it.relPath);
-        fileList.push({
-          filename: it.filename,
-          folder_name: it.folderName,
-          rel_path: it.relPath,
-          size_bytes: it.size,
-          size_formatted: formatBytes(it.size),
-          ext: it.ext,
-        });
-      }
-
-      const uniqueFolders = Array.from(new Set(fileList.map((f) => f.folder_name)));
-
-      prefixStatItems.push({
-        prefix: '[无固定前缀]',
-        match_count: count,
-        total_size_bytes: sz,
-        size_formatted: formatBytes(sz),
-        percentage: pct,
-        extensions: exts,
-        sample_files: samples,
-        folders: uniqueFolders,
-        files: fileList,
-      });
     }
   }
 
