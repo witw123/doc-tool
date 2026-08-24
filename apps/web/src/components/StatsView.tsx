@@ -373,27 +373,27 @@ export function StatsView({ initialPath = '' }: StatsViewProps) {
 
           <div className="glass-panel p-4">
             <div className="flex items-center justify-between text-xs text-[var(--text-secondary)] font-semibold mb-1">
-              <span>最深层(叶子)目录数</span>
+              <span>总文件夹数量</span>
               <FolderCheck className="w-3.5 h-3.5 text-emerald-accent" />
             </div>
             <div className="text-2xl font-bold font-mono tabular-nums text-emerald-accent">
-              {scanResult.summary.total_leaf_directories.toLocaleString()}
+              {scanResult.summary.total_directories.toLocaleString()} 个
             </div>
             <div className="text-[11px] text-[var(--text-muted)] mt-1 font-mono">
-              总扫描目录: {scanResult.summary.total_directories}
+              含叶子目录: {scanResult.summary.total_leaf_directories} 个 | 深度: {scanResult.summary.max_depth} 层
             </div>
           </div>
 
           <div className="glass-panel p-4">
             <div className="flex items-center justify-between text-xs text-[var(--text-secondary)] font-semibold mb-1">
-              <span>平均叶子目录文件数</span>
+              <span>前缀归类组数</span>
               <Layers className="w-3.5 h-3.5 text-brand-accent" />
             </div>
             <div className="text-2xl font-bold font-mono tabular-nums text-brand-accent">
-              {scanResult.summary.avg_files_per_leaf_dir}
+              {scanResult.prefix_stats.length.toLocaleString()} 组
             </div>
             <div className="text-[11px] text-[var(--text-muted)] mt-1 font-mono">
-              最大层级深度: {scanResult.summary.max_depth}
+              100% 全量聚合 · 跨 {scanResult.summary.total_directories} 个目录
             </div>
           </div>
 

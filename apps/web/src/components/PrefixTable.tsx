@@ -74,6 +74,16 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
     });
   }, [prefixStats, search]);
 
+  // Compute total unique folders across all items
+  const totalFoldersCount = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of prefixStats) {
+      (p.folders || []).forEach((f) => set.add(f));
+      (p.files || []).forEach((f) => set.add(f.folder_name));
+    }
+    return set.size;
+  }, [prefixStats]);
+
   // Export grouped Excel
   const exportGroupedExcel = async () => {
     const workbook = new ExcelJS.Workbook();
@@ -84,7 +94,7 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
     const summarySheet = workbook.addWorksheet('前缀统计汇总');
     summarySheet.views = [{ state: 'frozen', ySplit: 1 }];
 
-    const summaryHeaders = ['前缀标签', '涉及文件夹', '文件数量', '数量占比(%)', '总大小(字节)', '格式化大小', '格式分布'];
+    const summaryHeaders = ['前缀标签', '涉及文件夹数', '涉及文件夹列表', '文件数量', '数量占比(%)', '总大小(字节)', '格式化大小', '格式分布'];
     const headerRow = summarySheet.addRow(summaryHeaders);
     headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     headerRow.fill = {
@@ -95,9 +105,11 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
     headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
 
     for (const p of prefixStats) {
+      const folders = p.folders || [];
       summarySheet.addRow([
         p.prefix,
-        (p.folders || []).join(', ') || '-',
+        folders.length,
+        folders.join('; ') || '-',
         p.match_count,
         `${p.percentage}%`,
         p.total_size_bytes,
@@ -184,11 +196,11 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
             <h3 className="font-bold text-sm text-[var(--text-primary)] flex items-center gap-2">
               <span>按前缀归并统计</span>
               <span className="text-xs font-normal text-[var(--text-secondary)]">
-                ({filtered.length} 个前缀组)
+                (涉及 {totalFoldersCount} 个文件夹 · {filtered.length} 个前缀组)
               </span>
             </h3>
             <p className="text-[11px] text-[var(--text-muted)]">
-              相同前缀的文件严格汇聚在一起，清晰显示文件归属的文件夹与完整路径
+              相同前缀的文件严格汇聚在一起，完整展示涉及的所有文件夹数目与明细清单
             </p>
           </div>
         </div>
@@ -234,8 +246,8 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
           <thead>
             <tr className="border-b border-[var(--border-subtle)] bg-[var(--bg-surface-elevated)] text-[var(--text-secondary)] font-semibold">
               <th className="py-3 px-3 w-10 text-center whitespace-nowrap">#</th>
-              <th className="py-3 px-4 min-w-[180px] whitespace-nowrap">前缀名称 / 分组标签</th>
-              <th className="py-3 px-4 min-w-[180px] whitespace-nowrap">涉及文件夹</th>
+              <th className="py-3 px-4 min-w-[170px] whitespace-nowrap">前缀名称 / 分组标签</th>
+              <th className="py-3 px-4 min-w-[220px] whitespace-nowrap">涉及文件夹及数目</th>
               <th className="py-3 px-4 text-right w-28 whitespace-nowrap">归类文件数</th>
               <th className="py-3 px-4 w-36 whitespace-nowrap">文件数占比</th>
               <th className="py-3 px-4 text-right w-24 whitespace-nowrap">总占用空间</th>
@@ -264,7 +276,7 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
                         const parts = s.split('/');
                         return {
                           filename: parts[parts.length - 1] || s,
-                          folder_name: parts.length > 1 ? parts[parts.length - 2]! : '(根目录)',
+                          folder_name: parts.length > 1 ? parts.slice(0, -1).join('/') : '(根目录)',
                           rel_path: s,
                           size_bytes: 0,
                           size_formatted: '-',
@@ -272,7 +284,9 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
                         };
                       });
 
-                const foldersList = item.folders || Array.from(new Set(fileList.map((f) => f.folder_name)));
+                const foldersList = item.folders && item.folders.length > 0
+                  ? item.folders
+                  : Array.from(new Set(fileList.map((f) => f.folder_name)));
 
                 return (
                   <React.Fragment key={`${item.prefix}-${idx}`}>
@@ -301,19 +315,23 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
                         </div>
                       </td>
                       <td className="py-3 px-4">
-                        <div className="flex flex-wrap items-center gap-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="px-2 py-0.5 rounded-md text-[11px] font-bold font-mono bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 whitespace-nowrap">
+                            共 {foldersList.length} 个文件夹
+                          </span>
                           {foldersList.slice(0, 3).map((folderName, fIdx) => (
                             <span
                               key={fIdx}
-                              className="px-2 py-0.5 rounded-md text-[11px] font-mono bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 whitespace-nowrap inline-flex items-center gap-1"
+                              className="px-2 py-0.5 rounded-md text-[11px] font-mono bg-[var(--bg-input)] text-[var(--text-secondary)] border border-[var(--border-subtle)] whitespace-nowrap inline-flex items-center gap-1"
+                              title={folderName}
                             >
                               <Folder className="w-2.5 h-2.5 text-indigo-400 shrink-0" />
-                              <span className="truncate max-w-[120px]">{folderName}</span>
+                              <span className="truncate max-w-[130px]">{folderName}</span>
                             </span>
                           ))}
                           {foldersList.length > 3 && (
                             <span className="text-[10px] text-[var(--text-muted)] font-mono whitespace-nowrap">
-                              +{foldersList.length - 3} 个文件夹
+                              +{foldersList.length - 3} 个
                             </span>
                           )}
                         </div>
