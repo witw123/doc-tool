@@ -122,7 +122,7 @@ export class ScannerService {
           dirExtCounts[ext] = (dirExtCounts[ext] || 0) + 1;
           globalExtCounts[ext] = (globalExtCounts[ext] || 0) + 1;
 
-          const folderName = path.basename(dirPath) || path.basename(targetPath);
+          const folderName = relPath || '(根目录)';
           const relFilePath = (relPath ? `${relPath}/${entry.name}` : entry.name).replace(/\\/g, '/');
           allScannedFiles.push({
             filename: entry.name,

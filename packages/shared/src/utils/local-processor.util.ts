@@ -105,7 +105,7 @@ export function processLocalFolderScan(
     dirMap.get(dirRelPath)!.push(file);
     dirSizes.set(dirRelPath, (dirSizes.get(dirRelPath) || 0) + file.size);
 
-    const dirFolder = parts.length > 1 ? parts[parts.length - 2]! : folderName;
+    const dirFolder = parts.length > 1 ? parts.slice(0, -1).join('/') : '(根目录)';
     const prefixFileEntry: PrefixFileItem = {
       filename: file.filename,
       folder_name: dirFolder,
@@ -229,7 +229,7 @@ export function processLocalFolderScan(
     const clusterMeta: FileEntryMeta[] = filteredFiles.map((f) => {
       const norm = f.relPath.replace(/\\/g, '/');
       const pts = norm.split('/');
-      const fName = pts.length > 1 ? pts[pts.length - 2]! : folderName;
+      const fName = pts.length > 1 ? pts.slice(0, -1).join('/') : '(根目录)';
       return {
         filename: f.filename,
         folderName: fName,
