@@ -1,3 +1,11 @@
+export interface PrefixFileItem {
+  filename: string;
+  rel_path: string;
+  size_bytes: number;
+  size_formatted: string;
+  ext: string;
+}
+
 export interface PrefixStatItem {
   prefix: string;
   match_count: number;
@@ -6,6 +14,7 @@ export interface PrefixStatItem {
   percentage: number;
   extensions: Record<string, number>;
   sample_files: string[];
+  files?: PrefixFileItem[];
 }
 
 export interface LeafDirectoryItem {

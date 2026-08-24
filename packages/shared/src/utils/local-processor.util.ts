@@ -2,6 +2,7 @@ import {
   ScanResponse,
   ScanSummary,
   PrefixStatItem,
+  PrefixFileItem,
   LeafDirectoryItem,
 } from '../models/scan.model.js';
 import {
@@ -55,11 +56,13 @@ export function processLocalFolderScan(
   const userPrefixSizes: Record<string, number> = {};
   const userPrefixExts: Record<string, Record<string, number>> = {};
   const userPrefixSamples: Record<string, string[]> = {};
+  const userPrefixFiles: Record<string, PrefixFileItem[]> = {};
 
   let unmatchedUserCount = 0;
   let unmatchedUserSize = 0;
   const unmatchedUserExts: Record<string, number> = {};
   const unmatchedUserSamples: string[] = [];
+  const unmatchedUserFiles: PrefixFileItem[] = [];
 
   let totalSize = 0;
   let maxDepthSeen = 0;
@@ -102,6 +105,14 @@ export function processLocalFolderScan(
     dirMap.get(dirRelPath)!.push(file);
     dirSizes.set(dirRelPath, (dirSizes.get(dirRelPath) || 0) + file.size);
 
+    const prefixFileEntry: PrefixFileItem = {
+      filename: file.filename,
+      rel_path: normalizedRel,
+      size_bytes: file.size,
+      size_formatted: formatBytes(file.size),
+      ext,
+    };
+
     // Prefix matching
     if (prefixes.length > 0) {
       let matchedAny = false;
@@ -118,6 +129,9 @@ export function processLocalFolderScan(
           if (userPrefixSamples[p]!.length < 8) {
             userPrefixSamples[p]!.push(file.relPath);
           }
+
+          if (!userPrefixFiles[p]) userPrefixFiles[p] = [];
+          userPrefixFiles[p]!.push(prefixFileEntry);
         }
       }
 
@@ -128,6 +142,7 @@ export function processLocalFolderScan(
         if (unmatchedUserSamples.length < 8) {
           unmatchedUserSamples.push(file.relPath);
         }
+        unmatchedUserFiles.push(prefixFileEntry);
       }
     }
   }
@@ -185,6 +200,7 @@ export function processLocalFolderScan(
         percentage: pct,
         extensions: userPrefixExts[p] || {},
         sample_files: userPrefixSamples[p] || [],
+        files: userPrefixFiles[p] || [],
       });
     }
 
@@ -198,6 +214,7 @@ export function processLocalFolderScan(
         percentage: otherPct,
         extensions: unmatchedUserExts,
         sample_files: unmatchedUserSamples,
+        files: unmatchedUserFiles,
       });
     }
   } else {
@@ -221,9 +238,17 @@ export function processLocalFolderScan(
 
       const exts: Record<string, number> = {};
       const samples: string[] = [];
+      const fileList: PrefixFileItem[] = [];
       for (const it of items) {
         exts[it.ext] = (exts[it.ext] || 0) + 1;
         if (samples.length < 8) samples.push(it.relPath);
+        fileList.push({
+          filename: it.filename,
+          rel_path: it.relPath,
+          size_bytes: it.size,
+          size_formatted: formatBytes(it.size),
+          ext: it.ext,
+        });
       }
 
       prefixStatItems.push({
@@ -234,6 +259,7 @@ export function processLocalFolderScan(
         percentage: pct,
         extensions: exts,
         sample_files: samples,
+        files: fileList,
       });
 
       autoDiscoveredPrefixes.push(`${p} (${count}个)`);
@@ -247,9 +273,17 @@ export function processLocalFolderScan(
 
       const exts: Record<string, number> = {};
       const samples: string[] = [];
+      const fileList: PrefixFileItem[] = [];
       for (const it of unassigned) {
         exts[it.ext] = (exts[it.ext] || 0) + 1;
         if (samples.length < 8) samples.push(it.relPath);
+        fileList.push({
+          filename: it.filename,
+          rel_path: it.relPath,
+          size_bytes: it.size,
+          size_formatted: formatBytes(it.size),
+          ext: it.ext,
+        });
       }
 
       prefixStatItems.push({
@@ -260,6 +294,7 @@ export function processLocalFolderScan(
         percentage: pct,
         extensions: exts,
         sample_files: samples,
+        files: fileList,
       });
     }
   }

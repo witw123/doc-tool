@@ -51,6 +51,7 @@ export class ScannerService {
     const userPrefixSizes: Record<string, number> = {};
     const userPrefixExts: Record<string, Record<string, number>> = {};
     const userPrefixSamples: Record<string, string[]> = {};
+    const userPrefixFiles: Record<string, any[]> = {};
 
     let totalFiles = 0;
     let totalSize = 0;
@@ -60,6 +61,7 @@ export class ScannerService {
     let unmatchedUserSize = 0;
     const unmatchedUserExts: Record<string, number> = {};
     const unmatchedUserSamples: string[] = [];
+    const unmatchedUserFiles: any[] = [];
 
     // Traverse directory tree iteratively
     const queue: { dirPath: string; depth: number }[] = [{ dirPath: targetPath, depth: 0 }];
@@ -129,6 +131,14 @@ export class ScannerService {
           });
 
           // User-specified prefixes matching
+          const prefixFileEntry = {
+            filename: entry.name,
+            rel_path: relFilePath,
+            size_bytes: fileSize,
+            size_formatted: formatBytes(fileSize),
+            ext,
+          };
+
           if (prefixes.length > 0) {
             let matchedAny = false;
             for (const p of prefixes) {
@@ -145,6 +155,9 @@ export class ScannerService {
                 if (userPrefixSamples[p]!.length < 8) {
                   userPrefixSamples[p]!.push(relFilePath);
                 }
+
+                if (!userPrefixFiles[p]) userPrefixFiles[p] = [];
+                userPrefixFiles[p]!.push(prefixFileEntry);
               }
             }
 
@@ -155,6 +168,7 @@ export class ScannerService {
               if (unmatchedUserSamples.length < 8) {
                 unmatchedUserSamples.push(relFilePath);
               }
+              unmatchedUserFiles.push(prefixFileEntry);
             }
           }
 
@@ -199,6 +213,7 @@ export class ScannerService {
           percentage: pct,
           extensions: userPrefixExts[p] || {},
           sample_files: userPrefixSamples[p] || [],
+          files: userPrefixFiles[p] || [],
         });
       }
 
@@ -212,6 +227,7 @@ export class ScannerService {
           percentage: otherPct,
           extensions: unmatchedUserExts,
           sample_files: unmatchedUserSamples,
+          files: unmatchedUserFiles,
         });
       }
     } else {
@@ -229,11 +245,19 @@ export class ScannerService {
 
         const exts: Record<string, number> = {};
         const samples: string[] = [];
+        const fileList = [];
         for (const it of items) {
           exts[it.ext] = (exts[it.ext] || 0) + 1;
           if (samples.length < 8) {
             samples.push(it.relPath);
           }
+          fileList.push({
+            filename: it.filename,
+            rel_path: it.relPath,
+            size_bytes: it.size,
+            size_formatted: formatBytes(it.size),
+            ext: it.ext,
+          });
         }
 
         prefixStatItems.push({
@@ -244,6 +268,7 @@ export class ScannerService {
           percentage: pct,
           extensions: exts,
           sample_files: samples,
+          files: fileList,
         });
 
         autoDiscoveredPrefixes.push(`${p} (${count}个)`);
@@ -257,11 +282,19 @@ export class ScannerService {
 
         const exts: Record<string, number> = {};
         const samples: string[] = [];
+        const fileList = [];
         for (const it of unassigned) {
           exts[it.ext] = (exts[it.ext] || 0) + 1;
           if (samples.length < 8) {
             samples.push(it.relPath);
           }
+          fileList.push({
+            filename: it.filename,
+            rel_path: it.relPath,
+            size_bytes: it.size,
+            size_formatted: formatBytes(it.size),
+            ext: it.ext,
+          });
         }
 
         prefixStatItems.push({
@@ -272,6 +305,7 @@ export class ScannerService {
           percentage: pct,
           extensions: exts,
           sample_files: samples,
+          files: fileList,
         });
       }
     }

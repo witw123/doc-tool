@@ -1,94 +1,241 @@
 'use client';
 
-import React, { useState } from 'react';
-import { PrefixStatItem, formatBytes } from '@doc-tool/shared';
-import { Sparkles, Download, ChevronRight, ChevronDown, Search } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { PrefixStatItem, PrefixFileItem } from '@doc-tool/shared';
+import {
+  Sparkles,
+  Download,
+  ChevronRight,
+  ChevronDown,
+  Search,
+  FileSpreadsheet,
+  Layers,
+  FileText,
+  ChevronsUpDown,
+  Folder,
+} from 'lucide-react';
+import ExcelJS from 'exceljs';
 
 interface PrefixTableProps {
   prefixStats: PrefixStatItem[];
 }
 
 export function PrefixTable({ prefixStats }: PrefixTableProps) {
-  const [expandedPrefix, setExpandedPrefix] = useState<string | null>(null);
+  // Set of expanded prefix keys
+  const [expandedPrefixes, setExpandedPrefixes] = useState<Set<string>>(() => {
+    // Default expand the first prefix if available
+    const initial = new Set<string>();
+    if (prefixStats.length > 0) {
+      initial.add(prefixStats[0].prefix);
+    }
+    return initial;
+  });
+
   const [search, setSearch] = useState('');
+  const [fileFilter, setFileFilter] = useState('');
 
-  const filtered = prefixStats.filter((p) =>
-    search ? p.prefix.toLowerCase().includes(search.toLowerCase()) : true
-  );
-
+  // Toggle single prefix
   const toggleExpand = (pfx: string) => {
-    setExpandedPrefix(expandedPrefix === pfx ? null : pfx);
+    setExpandedPrefixes((prev) => {
+      const next = new Set(prev);
+      if (next.has(pfx)) {
+        next.delete(pfx);
+      } else {
+        next.add(pfx);
+      }
+      return next;
+    });
   };
 
-  const exportCSV = () => {
-    const headers = ['前缀', '匹配文件数', '占比(%)', '总大小(字节)', '大小(格式化)', '文件格式分布'];
-    const rows = prefixStats.map((p) => [
-      `"${p.prefix}"`,
-      p.match_count,
-      p.percentage,
-      p.total_size_bytes,
-      `"${p.size_formatted}"`,
-      `"${Object.entries(p.extensions)
-        .map(([k, v]) => `${k}:${v}`)
-        .join('; ')}"`,
-    ]);
+  // Expand / Collapse all
+  const handleToggleAll = () => {
+    if (expandedPrefixes.size === prefixStats.length) {
+      setExpandedPrefixes(new Set());
+    } else {
+      setExpandedPrefixes(new Set(prefixStats.map((p) => p.prefix)));
+    }
+  };
 
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  // Filter prefixes and files
+  const filtered = useMemo(() => {
+    return prefixStats.filter((p) => {
+      const matchPrefix = search
+        ? p.prefix.toLowerCase().includes(search.toLowerCase())
+        : true;
+      const matchFile = fileFilter
+        ? (p.files || []).some(
+            (f) =>
+              f.filename.toLowerCase().includes(fileFilter.toLowerCase()) ||
+              f.rel_path.toLowerCase().includes(fileFilter.toLowerCase())
+          ) ||
+          (p.sample_files || []).some((s) =>
+            s.toLowerCase().includes(fileFilter.toLowerCase())
+          )
+        : true;
+      return matchPrefix && matchFile;
+    });
+  }, [prefixStats, search, fileFilter]);
+
+  // Export grouped Excel
+  const exportGroupedExcel = async () => {
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'FileScope';
+    workbook.created = new Date();
+
+    // Summary Sheet
+    const summarySheet = workbook.addWorksheet('前缀统计汇总');
+    summarySheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+    const summaryHeaders = ['前缀标签', '文件数量', '数量占比(%)', '总大小(字节)', '格式化大小', '格式分布'];
+    const headerRow = summarySheet.addRow(summaryHeaders);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF1F4E78' },
+    };
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    for (const p of prefixStats) {
+      summarySheet.addRow([
+        p.prefix,
+        p.match_count,
+        `${p.percentage}%`,
+        p.total_size_bytes,
+        p.size_formatted,
+        Object.entries(p.extensions)
+          .map(([k, v]) => `${k}:${v}`)
+          .join('; '),
+      ]);
+    }
+
+    summarySheet.columns.forEach((col) => {
+      col.width = 20;
+    });
+
+    // Detail Sheet (Grouped by Prefix)
+    const detailSheet = workbook.addWorksheet('按前缀分组明细');
+    detailSheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+    const detailHeaders = ['归属前缀', '序号', '文件名', '所在相对路径', '大小', '格式'];
+    const detailHeaderRow = detailSheet.addRow(detailHeaders);
+    detailHeaderRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    detailHeaderRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF2F5597' },
+    };
+    detailHeaderRow.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    for (const p of prefixStats) {
+      const fileList = p.files && p.files.length > 0
+        ? p.files
+        : (p.sample_files || []).map((s) => ({
+            filename: s.split('/').pop() || s,
+            rel_path: s,
+            size_bytes: 0,
+            size_formatted: '-',
+            ext: s.includes('.') ? `.${s.split('.').pop()}` : '-',
+          }));
+
+      fileList.forEach((f, idx) => {
+        detailSheet.addRow([
+          p.prefix,
+          idx + 1,
+          f.filename,
+          f.rel_path,
+          f.size_formatted,
+          f.ext,
+        ]);
+      });
+    }
+
+    detailSheet.columns.forEach((col) => {
+      col.width = 25;
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `prefix_statistics_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `prefix_grouped_stats_${new Date().toISOString().slice(0, 10)}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
+  const isAllExpanded = expandedPrefixes.size === prefixStats.length && prefixStats.length > 0;
+
   return (
-    <div className="glass-panel overflow-hidden">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-6 py-4 border-b border-[var(--border-subtle)] bg-[var(--bg-surface-elevated)]/40">
+    <div className="glass-panel overflow-hidden space-y-0">
+      {/* Header & Controls Toolbar */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 px-6 py-4 border-b border-[var(--border-subtle)] bg-[var(--bg-surface-elevated)]/40">
         <div className="flex items-center gap-2.5">
-          <Sparkles className="w-4 h-4 text-cyan-accent" />
-          <h3 className="font-bold text-sm text-[var(--text-primary)]">
-            文件前缀统计清单 ({filtered.length} / {prefixStats.length})
-          </h3>
+          <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center">
+            <Sparkles className="w-4 h-4 text-cyan-accent" />
+          </div>
+          <div>
+            <h3 className="font-bold text-sm text-[var(--text-primary)] flex items-center gap-2">
+              <span>按前缀聚类汇聚统计</span>
+              <span className="text-xs font-normal text-[var(--text-secondary)]">
+                ({filtered.length} 个前缀组)
+              </span>
+            </h3>
+            <p className="text-[11px] text-[var(--text-muted)]">
+              相同前缀的文件自动归并在一起，支持展开查看该前缀下的全部文件清单
+            </p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Search Inputs */}
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="搜索前缀..."
+              placeholder="搜索前缀 / 文件名..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-8 pl-8 pr-3 rounded-lg text-xs bg-[var(--bg-input)] text-[var(--text-primary)] border border-[var(--border-subtle)] focus:border-indigo-500 outline-none"
+              className="h-8 pl-8 pr-3 rounded-lg text-xs bg-[var(--bg-input)] text-[var(--text-primary)] border border-[var(--border-subtle)] focus:border-indigo-500 outline-none w-48 sm:w-56"
             />
           </div>
 
+          {/* Toggle All Expand/Collapse */}
           <button
             type="button"
-            onClick={exportCSV}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[var(--bg-input)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+            onClick={handleToggleAll}
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[var(--bg-input)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+          >
+            <ChevronsUpDown className="w-3.5 h-3.5" />
+            <span>{isAllExpanded ? '全部收起' : '全部展开'}</span>
+          </button>
+
+          {/* Export Grouped Excel */}
+          <button
+            type="button"
+            onClick={exportGroupedExcel}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition-all"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>导出 CSV</span>
+            <span>导出前缀分组 Excel</span>
           </button>
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table & Grouped Files View */}
       <div className="overflow-x-auto">
-        <table className="min-w-[800px] w-full text-left text-xs border-collapse">
+        <table className="min-w-[880px] w-full text-left text-xs border-collapse">
           <thead>
             <tr className="border-b border-[var(--border-subtle)] bg-[var(--bg-surface-elevated)] text-[var(--text-secondary)] font-semibold">
-              <th className="py-3 px-3 w-12 text-center whitespace-nowrap">#</th>
-              <th className="py-3 px-4 min-w-[180px] whitespace-nowrap">前缀名称 / 标签</th>
-              <th className="py-3 px-4 text-right w-28 whitespace-nowrap">匹配文件数</th>
-              <th className="py-3 px-4 w-44 whitespace-nowrap">文件数占比</th>
+              <th className="py-3 px-3 w-10 text-center whitespace-nowrap">#</th>
+              <th className="py-3 px-4 min-w-[200px] whitespace-nowrap">前缀名称 / 分组标签</th>
+              <th className="py-3 px-4 text-right w-28 whitespace-nowrap">归类文件数</th>
+              <th className="py-3 px-4 w-40 whitespace-nowrap">文件数量占比</th>
               <th className="py-3 px-4 text-right w-28 whitespace-nowrap">总空间占用</th>
-              <th className="py-3 px-4 min-w-[160px] whitespace-nowrap">主要格式分布</th>
-              <th className="py-3 px-3 w-14 text-center whitespace-nowrap">样本</th>
+              <th className="py-3 px-4 min-w-[180px] whitespace-nowrap">主要格式分布</th>
+              <th className="py-3 px-3 w-16 text-center whitespace-nowrap">明细</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border-subtle)]">
@@ -100,31 +247,50 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
               </tr>
             ) : (
               filtered.map((item, idx) => {
-                const isExpanded = expandedPrefix === item.prefix;
-                const isUnassigned = item.prefix.includes('[无固定前缀]') || item.prefix.includes('[其他');
+                const isExpanded = expandedPrefixes.has(item.prefix);
+                const isUnassigned =
+                  item.prefix.includes('[无固定前缀]') ||
+                  item.prefix.includes('[其他/未匹配]');
+
+                const fileList: PrefixFileItem[] =
+                  item.files && item.files.length > 0
+                    ? item.files
+                    : (item.sample_files || []).map((s) => ({
+                        filename: s.split('/').pop() || s,
+                        rel_path: s,
+                        size_bytes: 0,
+                        size_formatted: '-',
+                        ext: s.includes('.') ? `.${s.split('.').pop()}` : '-',
+                      }));
 
                 return (
                   <React.Fragment key={`${item.prefix}-${idx}`}>
+                    {/* Prefix Summary Row */}
                     <tr
                       onClick={() => toggleExpand(item.prefix)}
-                      className="hover:bg-[var(--bg-surface-hover)]/60 cursor-pointer transition-colors"
+                      className={`hover:bg-[var(--bg-surface-hover)]/70 cursor-pointer transition-colors ${
+                        isExpanded ? 'bg-indigo-950/20' : ''
+                      }`}
                     >
                       <td className="py-3 px-3 text-center font-mono text-[11px] text-[var(--text-muted)] whitespace-nowrap">
                         {idx + 1}
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap">
-                        <span
-                          className={`font-mono font-bold px-2.5 py-0.5 rounded-md text-xs border whitespace-nowrap inline-flex items-center shrink-0 ${
-                            isUnassigned
-                              ? 'bg-[var(--bg-surface-elevated)] text-[var(--text-muted)] border-[var(--border-subtle)]'
-                              : 'tag-badge'
-                          }`}
-                        >
-                          {item.prefix}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`font-mono font-bold px-2.5 py-0.5 rounded-lg text-xs border whitespace-nowrap inline-flex items-center gap-1.5 shrink-0 ${
+                              isUnassigned
+                                ? 'bg-[var(--bg-surface-elevated)] text-[var(--text-muted)] border-[var(--border-subtle)]'
+                                : 'tag-badge shadow-sm'
+                            }`}
+                          >
+                            <Folder className="w-3 h-3 text-indigo-400" />
+                            <span>{item.prefix}</span>
+                          </span>
+                        </div>
                       </td>
-                      <td className="py-3 px-4 text-right font-mono font-semibold text-[var(--text-primary)] whitespace-nowrap">
-                        {item.match_count.toLocaleString()}
+                      <td className="py-3 px-4 text-right font-mono font-bold text-[var(--text-primary)] whitespace-nowrap">
+                        {item.match_count.toLocaleString()} 个
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap">
                         <div className="flex items-center gap-2">
@@ -139,19 +305,21 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
                           </span>
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-right font-mono text-[var(--text-secondary)] whitespace-nowrap">
+                      <td className="py-3 px-4 text-right font-mono text-[var(--text-secondary)] whitespace-nowrap font-semibold">
                         {item.size_formatted}
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex flex-wrap items-center gap-1">
-                          {Object.entries(item.extensions).slice(0, 4).map(([ext, count]) => (
-                            <span
-                              key={ext}
-                              className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-[var(--bg-input)] text-[var(--text-muted)] border border-[var(--border-subtle)] whitespace-nowrap"
-                            >
-                              {ext} ({count})
-                            </span>
-                          ))}
+                          {Object.entries(item.extensions)
+                            .slice(0, 4)
+                            .map(([ext, count]) => (
+                              <span
+                                key={ext}
+                                className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-[var(--bg-input)] text-[var(--text-muted)] border border-[var(--border-subtle)] whitespace-nowrap"
+                              >
+                                {ext} ({count})
+                              </span>
+                            ))}
                           {Object.keys(item.extensions).length > 4 && (
                             <span className="text-[10px] text-[var(--text-muted)] whitespace-nowrap">
                               +{Object.keys(item.extensions).length - 4} 种
@@ -161,29 +329,69 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
                       </td>
                       <td className="py-3 px-3 text-center text-[var(--text-muted)] whitespace-nowrap">
                         {isExpanded ? (
-                          <ChevronDown className="w-4 h-4 mx-auto text-brand-accent" />
+                          <ChevronDown className="w-4 h-4 mx-auto text-brand-accent transition-transform" />
                         ) : (
-                          <ChevronRight className="w-4 h-4 mx-auto" />
+                          <ChevronRight className="w-4 h-4 mx-auto transition-transform" />
                         )}
                       </td>
                     </tr>
 
-                    {isExpanded && item.sample_files && item.sample_files.length > 0 && (
-                      <tr className="bg-[var(--bg-input)]/80 border-b border-[var(--border-subtle)]">
-                        <td colSpan={7} className="p-4 pl-12">
-                          <div className="space-y-1.5">
-                            <div className="text-[11px] font-bold text-[var(--text-secondary)]">
-                              匹配样本文件 (前 {item.sample_files.length} 项):
+                    {/* Grouped Files Accordion Sub-Table */}
+                    {isExpanded && (
+                      <tr className="bg-[var(--bg-input)]/90 border-b border-[var(--border-subtle)] animate-in fade-in duration-150">
+                        <td colSpan={7} className="p-3 sm:p-4 pl-8 sm:pl-12">
+                          <div className="rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-3.5 space-y-2.5 shadow-inner">
+                            <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-2">
+                              <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
+                                <FileText className="w-3.5 h-3.5 text-cyan-accent" />
+                                <span>
+                                  「{item.prefix}」前缀归类下的全部文件 ({fileList.length} 个):
+                                </span>
+                              </div>
+                              <span className="text-[11px] font-mono text-[var(--text-muted)]">
+                                占用空间: {item.size_formatted}
+                              </span>
                             </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 font-mono text-xs text-cyan-accent">
-                              {item.sample_files.map((sample, sIdx) => (
-                                <div
-                                  key={sIdx}
-                                  className="truncate p-1.5 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-subtle)]"
-                                >
-                                  {sample}
-                                </div>
-                              ))}
+
+                            {/* Files Sub-table */}
+                            <div className="max-h-[320px] overflow-y-auto rounded-lg border border-[var(--border-subtle)]">
+                              <table className="w-full text-left text-[11px] border-collapse">
+                                <thead>
+                                  <tr className="bg-[var(--bg-surface-elevated)] border-b border-[var(--border-subtle)] text-[var(--text-secondary)] font-semibold sticky top-0 z-10">
+                                    <th className="py-2 px-2.5 w-10 text-center">#</th>
+                                    <th className="py-2 px-3 font-mono">文件名</th>
+                                    <th className="py-2 px-3 font-mono">所在相对路径</th>
+                                    <th className="py-2 px-3 text-right w-24">文件大小</th>
+                                    <th className="py-2 px-3 w-16 text-center">格式</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-[var(--border-subtle)]">
+                                  {fileList.map((file, fileIdx) => (
+                                    <tr
+                                      key={fileIdx}
+                                      className="hover:bg-[var(--bg-surface-hover)]/70 transition-colors font-mono"
+                                    >
+                                      <td className="py-1.5 px-2.5 text-center text-[var(--text-muted)]">
+                                        {fileIdx + 1}
+                                      </td>
+                                      <td className="py-1.5 px-3 font-bold text-cyan-accent break-all">
+                                        {file.filename}
+                                      </td>
+                                      <td className="py-1.5 px-3 text-[var(--text-secondary)] break-all">
+                                        {file.rel_path}
+                                      </td>
+                                      <td className="py-1.5 px-3 text-right text-[var(--text-muted)] whitespace-nowrap">
+                                        {file.size_formatted}
+                                      </td>
+                                      <td className="py-1.5 px-3 text-center whitespace-nowrap">
+                                        <span className="px-1.5 py-0.2 rounded text-[10px] bg-[var(--bg-input)] text-[var(--text-muted)] border border-[var(--border-subtle)]">
+                                          {file.ext}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
                             </div>
                           </div>
                         </td>

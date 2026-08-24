@@ -44,6 +44,8 @@ export function StatsView({ initialPath = '' }: StatsViewProps) {
   const [loading, setLoading] = useState(false);
   const [scanResult, setScanResult] = useState<ScanResponse | null>(null);
 
+  const [resultsViewMode, setResultsViewMode] = useState<'all' | 'prefix' | 'leaf'>('all');
+
   // Load saved prefixes from localStorage
   useEffect(() => {
     try {
@@ -426,14 +428,66 @@ export function StatsView({ initialPath = '' }: StatsViewProps) {
         </div>
       )}
 
-      {/* Results Tables */}
+      {/* Results Tables View Switcher & Tables */}
       {scanResult && (
-        <div className="space-y-6">
-          <PrefixTable prefixStats={scanResult.prefix_stats} />
-          <LeafDirectoryTable
-            leafDirectories={scanResult.leaf_directories}
-            allDirectories={scanResult.all_directories}
-          />
+        <div className="space-y-4">
+          {/* View Filter Switcher Tabs */}
+          <div className="flex flex-wrap items-center justify-between gap-3 p-2 rounded-2xl glass-panel bg-[var(--bg-surface-elevated)]/30 border border-[var(--border-subtle)]">
+            <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+              <button
+                type="button"
+                onClick={() => setResultsViewMode('all')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  resultsViewMode === 'all'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                全部展示
+              </button>
+              <button
+                type="button"
+                onClick={() => setResultsViewMode('prefix')}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  resultsViewMode === 'prefix'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                <span>按前缀聚类汇聚 ({scanResult.prefix_stats.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setResultsViewMode('leaf')}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  resultsViewMode === 'leaf'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                <FolderCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>按叶子目录深度 ({scanResult.leaf_directories.length})</span>
+              </button>
+            </div>
+
+            <div className="text-xs text-[var(--text-muted)] font-mono pr-2">
+              共汇总 {scanResult.summary.total_files} 个文件 · {scanResult.prefix_stats.length} 个前缀组
+            </div>
+          </div>
+
+          {/* Group by Prefix Table */}
+          {(resultsViewMode === 'all' || resultsViewMode === 'prefix') && (
+            <PrefixTable prefixStats={scanResult.prefix_stats} />
+          )}
+
+          {/* Leaf Directory Table */}
+          {(resultsViewMode === 'all' || resultsViewMode === 'leaf') && (
+            <LeafDirectoryTable
+              leafDirectories={scanResult.leaf_directories}
+              allDirectories={scanResult.all_directories}
+            />
+          )}
         </div>
       )}
     </div>
