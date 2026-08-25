@@ -13,6 +13,9 @@ import {
   FileText,
   ChevronsUpDown,
   Folder,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import ExcelJS from 'exceljs';
 
@@ -20,7 +23,20 @@ interface PrefixTableProps {
   prefixStats: PrefixStatItem[];
 }
 
+type SortField = 'count' | 'size' | 'prefix' | 'folders' | 'percentage';
+type SortOrder = 'asc' | 'desc';
+
+type SubSortField = 'index' | 'folder_name' | 'filename' | 'rel_path' | 'size_bytes' | 'ext';
+
 export function PrefixTable({ prefixStats }: PrefixTableProps) {
+  // Sorting state for main prefix groups
+  const [sortField, setSortField] = useState<SortField>('count');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+
+  // Sub-table sorting state
+  const [subSortField, setSubSortField] = useState<SubSortField>('index');
+  const [subSortOrder, setSubSortOrder] = useState<SortOrder>('asc');
+
   // Set of expanded prefix keys
   const [expandedPrefixes, setExpandedPrefixes] = useState<Set<string>>(() => {
     // Default expand all if 5 or fewer prefixes, or the first one
@@ -34,6 +50,26 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
   });
 
   const [search, setSearch] = useState('');
+
+  // Handle header click sort
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortOrder(field === 'prefix' ? 'asc' : 'desc');
+    }
+  };
+
+  // Handle sub-table sort
+  const handleSubSort = (field: SubSortField) => {
+    if (subSortField === field) {
+      setSubSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSubSortField(field);
+      setSubSortOrder(field === 'size_bytes' ? 'desc' : 'asc');
+    }
+  };
 
   // Toggle single prefix
   const toggleExpand = (pfx: string) => {
@@ -74,6 +110,38 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
     });
   }, [prefixStats, search]);
 
+  // Sorted list of prefix items
+  const sortedItems = useMemo(() => {
+    const list = [...filtered];
+    list.sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case 'count':
+          cmp = a.match_count - b.match_count;
+          break;
+        case 'size':
+          cmp = a.total_size_bytes - b.total_size_bytes;
+          break;
+        case 'prefix':
+          cmp = a.prefix.localeCompare(b.prefix, 'zh-CN');
+          break;
+        case 'folders': {
+          const fA = a.folders?.length ?? (a.files ? new Set(a.files.map((f) => f.folder_name)).size : 0);
+          const fB = b.folders?.length ?? (b.files ? new Set(b.files.map((f) => f.folder_name)).size : 0);
+          cmp = fA - fB;
+          break;
+        }
+        case 'percentage':
+          cmp = a.percentage - b.percentage;
+          break;
+        default:
+          cmp = a.match_count - b.match_count;
+      }
+      return sortOrder === 'desc' ? -cmp : cmp;
+    });
+    return list;
+  }, [filtered, sortField, sortOrder]);
+
   // Compute total unique folders across all items
   const totalFoldersCount = useMemo(() => {
     const set = new Set<string>();
@@ -104,7 +172,7 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
     };
     headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
 
-    for (const p of prefixStats) {
+    for (const p of sortedItems) {
       const folders = p.folders || [];
       summarySheet.addRow([
         p.prefix,
@@ -138,14 +206,14 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
     };
     detailHeaderRow.alignment = { vertical: 'middle', horizontal: 'center' };
 
-    for (const p of prefixStats) {
+    for (const p of sortedItems) {
       const fileList: PrefixFileItem[] = p.files && p.files.length > 0
         ? p.files
         : (p.sample_files || []).map((s) => {
             const parts = s.split('/');
             return {
               filename: parts[parts.length - 1] || s,
-              folder_name: parts.length > 1 ? parts[parts.length - 2]! : '(根目录)',
+              folder_name: parts.length > 1 ? parts.slice(0, -1).join('/') : '(根目录)',
               rel_path: s,
               size_bytes: 0,
               size_formatted: '-',
@@ -182,7 +250,31 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
     URL.revokeObjectURL(url);
   };
 
-  const isAllExpanded = expandedPrefixes.size === prefixStats.length && prefixStats.length > 0;
+  const isAllExpanded = expandedPrefixes.size === sortedItems.length && sortedItems.length > 0;
+
+  // Helper icon for main table sortable headers
+  const renderSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="w-3 h-3 text-[var(--text-muted)] opacity-60 group-hover:opacity-100 transition-opacity" />;
+    }
+    return sortOrder === 'asc' ? (
+      <ArrowUp className="w-3 h-3 text-cyan-accent" />
+    ) : (
+      <ArrowDown className="w-3 h-3 text-cyan-accent" />
+    );
+  };
+
+  // Helper icon for sub-table sortable headers
+  const renderSubSortIcon = (field: SubSortField) => {
+    if (subSortField !== field) {
+      return <ArrowUpDown className="w-2.5 h-2.5 text-[var(--text-muted)] opacity-50 hover:opacity-100" />;
+    }
+    return subSortOrder === 'asc' ? (
+      <ArrowUp className="w-2.5 h-2.5 text-cyan-accent" />
+    ) : (
+      <ArrowDown className="w-2.5 h-2.5 text-cyan-accent" />
+    );
+  };
 
   return (
     <div className="glass-panel overflow-hidden space-y-0">
@@ -196,16 +288,41 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
             <h3 className="font-bold text-sm text-[var(--text-primary)] flex items-center gap-2">
               <span>按前缀归并统计</span>
               <span className="text-xs font-normal text-[var(--text-secondary)]">
-                (涉及 {totalFoldersCount} 个文件夹 · {filtered.length} 个前缀组)
+                (涉及 {totalFoldersCount} 个文件夹 · {sortedItems.length} 个前缀组)
               </span>
             </h3>
             <p className="text-[11px] text-[var(--text-muted)]">
-              相同前缀的文件严格汇聚在一起，完整展示涉及的所有文件夹数目与明细清单
+              相同前缀的文件严格汇聚在一起，支持按文件数、空间占用、前缀名、文件夹数等多维排序
             </p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          {/* Quick Sort Selector */}
+          <div className="flex items-center gap-1.5 bg-[var(--bg-input)] px-2.5 py-1 rounded-lg border border-[var(--border-subtle)]">
+            <ArrowUpDown className="w-3.5 h-3.5 text-cyan-accent" />
+            <span className="text-xs font-medium text-[var(--text-secondary)] whitespace-nowrap">排序:</span>
+            <select
+              value={`${sortField}-${sortOrder}`}
+              onChange={(e) => {
+                const [f, o] = e.target.value.split('-') as [SortField, SortOrder];
+                setSortField(f);
+                setSortOrder(o);
+              }}
+              className="h-6 pl-1 pr-2 rounded text-xs bg-transparent text-[var(--text-primary)] font-semibold outline-none cursor-pointer"
+            >
+              <option value="count-desc">文件数量 (从多到少)</option>
+              <option value="count-asc">文件数量 (从少到多)</option>
+              <option value="size-desc">占用空间 (从大到小)</option>
+              <option value="size-asc">占用空间 (从小到大)</option>
+              <option value="prefix-asc">前缀名称 (A → Z / 升序)</option>
+              <option value="prefix-desc">前缀名称 (Z → A / 降序)</option>
+              <option value="folders-desc">涉及文件夹数 (从多到少)</option>
+              <option value="folders-asc">涉及文件夹数 (从少到多)</option>
+              <option value="percentage-desc">文件数占比 (从高到低)</option>
+            </select>
+          </div>
+
           {/* Search Input */}
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
@@ -214,7 +331,7 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
               placeholder="搜索前缀 / 文件夹 / 文件名..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-8 pl-8 pr-3 rounded-lg text-xs bg-[var(--bg-input)] text-[var(--text-primary)] border border-[var(--border-subtle)] focus:border-indigo-500 outline-none w-56 sm:w-64"
+              className="h-8 pl-8 pr-3 rounded-lg text-xs bg-[var(--bg-input)] text-[var(--text-primary)] border border-[var(--border-subtle)] focus:border-indigo-500 outline-none w-52 sm:w-60"
             />
           </div>
 
@@ -242,34 +359,85 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
 
       {/* Table & Grouped Files View */}
       <div className="overflow-x-auto">
-        <table className="min-w-[920px] w-full text-left text-xs border-collapse">
+        <table className="min-w-[940px] w-full text-left text-xs border-collapse">
           <thead>
-            <tr className="border-b border-[var(--border-subtle)] bg-[var(--bg-surface-elevated)] text-[var(--text-secondary)] font-semibold">
+            <tr className="border-b border-[var(--border-subtle)] bg-[var(--bg-surface-elevated)] text-[var(--text-secondary)] font-semibold select-none">
               <th className="py-3 px-3 w-10 text-center whitespace-nowrap">#</th>
-              <th className="py-3 px-4 min-w-[170px] whitespace-nowrap">前缀名称 / 分组标签</th>
-              <th className="py-3 px-4 min-w-[220px] whitespace-nowrap">涉及文件夹及数目</th>
-              <th className="py-3 px-4 text-right w-28 whitespace-nowrap">归类文件数</th>
-              <th className="py-3 px-4 w-36 whitespace-nowrap">文件数占比</th>
-              <th className="py-3 px-4 text-right w-24 whitespace-nowrap">总占用空间</th>
+
+              {/* Prefix Label Sortable */}
+              <th
+                onClick={() => handleSort('prefix')}
+                className="py-3 px-4 min-w-[170px] whitespace-nowrap cursor-pointer hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]/60 transition-colors group"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span>前缀名称 / 分组标签</span>
+                  {renderSortIcon('prefix')}
+                </div>
+              </th>
+
+              {/* Folders Count Sortable */}
+              <th
+                onClick={() => handleSort('folders')}
+                className="py-3 px-4 min-w-[220px] whitespace-nowrap cursor-pointer hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]/60 transition-colors group"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span>涉及文件夹及数目</span>
+                  {renderSortIcon('folders')}
+                </div>
+              </th>
+
+              {/* File Count Sortable */}
+              <th
+                onClick={() => handleSort('count')}
+                className="py-3 px-4 text-right w-32 whitespace-nowrap cursor-pointer hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]/60 transition-colors group"
+              >
+                <div className="flex items-center justify-end gap-1.5">
+                  <span>归类文件数</span>
+                  {renderSortIcon('count')}
+                </div>
+              </th>
+
+              {/* Percentage Sortable */}
+              <th
+                onClick={() => handleSort('percentage')}
+                className="py-3 px-4 w-36 whitespace-nowrap cursor-pointer hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]/60 transition-colors group"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span>文件数占比</span>
+                  {renderSortIcon('percentage')}
+                </div>
+              </th>
+
+              {/* Total Size Sortable */}
+              <th
+                onClick={() => handleSort('size')}
+                className="py-3 px-4 text-right w-28 whitespace-nowrap cursor-pointer hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]/60 transition-colors group"
+              >
+                <div className="flex items-center justify-end gap-1.5">
+                  <span>总占用空间</span>
+                  {renderSortIcon('size')}
+                </div>
+              </th>
+
               <th className="py-3 px-4 min-w-[160px] whitespace-nowrap">主要格式</th>
               <th className="py-3 px-3 w-14 text-center whitespace-nowrap">明细</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border-subtle)]">
-            {filtered.length === 0 ? (
+            {sortedItems.length === 0 ? (
               <tr>
                 <td colSpan={8} className="py-12 text-center text-[var(--text-muted)]">
                   暂无匹配的前缀统计数据
                 </td>
               </tr>
             ) : (
-              filtered.map((item, idx) => {
+              sortedItems.map((item, idx) => {
                 const isExpanded = expandedPrefixes.has(item.prefix);
                 const isUnassigned =
                   item.prefix.includes('[无固定前缀]') ||
                   item.prefix.includes('[其他/未匹配]');
 
-                const fileList: PrefixFileItem[] =
+                const rawFileList: PrefixFileItem[] =
                   item.files && item.files.length > 0
                     ? item.files
                     : (item.sample_files || []).map((s) => {
@@ -283,6 +451,31 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
                           ext: s.includes('.') ? `.${s.split('.').pop()}` : '-',
                         };
                       });
+
+                // Apply sub-table sorting
+                const fileList = [...rawFileList].sort((a, b) => {
+                  let cmp = 0;
+                  switch (subSortField) {
+                    case 'filename':
+                      cmp = a.filename.localeCompare(b.filename, 'zh-CN');
+                      break;
+                    case 'folder_name':
+                      cmp = a.folder_name.localeCompare(b.folder_name, 'zh-CN');
+                      break;
+                    case 'rel_path':
+                      cmp = a.rel_path.localeCompare(b.rel_path, 'zh-CN');
+                      break;
+                    case 'size_bytes':
+                      cmp = a.size_bytes - b.size_bytes;
+                      break;
+                    case 'ext':
+                      cmp = a.ext.localeCompare(b.ext);
+                      break;
+                    default:
+                      cmp = 0;
+                  }
+                  return subSortOrder === 'desc' ? -cmp : cmp;
+                });
 
                 const foldersList = item.folders && item.folders.length > 0
                   ? item.folders
@@ -392,11 +585,11 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
                               <div className="flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
                                 <FileText className="w-3.5 h-3.5 text-cyan-accent" />
                                 <span>
-                                  「{item.prefix}」前缀下的全部归类文件 ({fileList.length} 个):
+                                  「{item.prefix}」前缀下的全部归类文件 ({fileList.length} 个文件 · 跨 {foldersList.length} 个文件夹):
                                 </span>
                               </div>
                               <div className="flex items-center gap-3 text-[11px] font-mono text-[var(--text-muted)]">
-                                <span>跨 {foldersList.length} 个文件夹</span>
+                                <span>点击子表表头可对文件进行排序</span>
                                 <span>总空间: {item.size_formatted}</span>
                               </div>
                             </div>
@@ -405,13 +598,68 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
                             <div className="max-h-[360px] overflow-y-auto rounded-lg border border-[var(--border-subtle)]">
                               <table className="w-full text-left text-[11px] border-collapse">
                                 <thead>
-                                  <tr className="bg-[var(--bg-surface-elevated)] border-b border-[var(--border-subtle)] text-[var(--text-secondary)] font-semibold sticky top-0 z-10">
+                                  <tr className="bg-[var(--bg-surface-elevated)] border-b border-[var(--border-subtle)] text-[var(--text-secondary)] font-semibold sticky top-0 z-10 select-none">
                                     <th className="py-2 px-2.5 w-10 text-center">#</th>
-                                    <th className="py-2 px-3 font-mono min-w-[140px]">对应文件夹</th>
-                                    <th className="py-2 px-3 font-mono min-w-[180px]">文件名</th>
-                                    <th className="py-2 px-3 font-mono min-w-[200px]">所在相对路径</th>
-                                    <th className="py-2 px-3 text-right w-24">文件大小</th>
-                                    <th className="py-2 px-3 w-16 text-center">格式</th>
+                                    <th
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleSubSort('folder_name');
+                                      }}
+                                      className="py-2 px-3 font-mono min-w-[140px] cursor-pointer hover:text-[var(--text-primary)]"
+                                    >
+                                      <div className="flex items-center gap-1">
+                                        <span>对应文件夹</span>
+                                        {renderSubSortIcon('folder_name')}
+                                      </div>
+                                    </th>
+                                    <th
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleSubSort('filename');
+                                      }}
+                                      className="py-2 px-3 font-mono min-w-[180px] cursor-pointer hover:text-[var(--text-primary)]"
+                                    >
+                                      <div className="flex items-center gap-1">
+                                        <span>文件名</span>
+                                        {renderSubSortIcon('filename')}
+                                      </div>
+                                    </th>
+                                    <th
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleSubSort('rel_path');
+                                      }}
+                                      className="py-2 px-3 font-mono min-w-[200px] cursor-pointer hover:text-[var(--text-primary)]"
+                                    >
+                                      <div className="flex items-center gap-1">
+                                        <span>所在相对路径</span>
+                                        {renderSubSortIcon('rel_path')}
+                                      </div>
+                                    </th>
+                                    <th
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleSubSort('size_bytes');
+                                      }}
+                                      className="py-2 px-3 text-right w-24 cursor-pointer hover:text-[var(--text-primary)]"
+                                    >
+                                      <div className="flex items-center justify-end gap-1">
+                                        <span>文件大小</span>
+                                        {renderSubSortIcon('size_bytes')}
+                                      </div>
+                                    </th>
+                                    <th
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleSubSort('ext');
+                                      }}
+                                      className="py-2 px-3 w-16 text-center cursor-pointer hover:text-[var(--text-primary)]"
+                                    >
+                                      <div className="flex items-center justify-center gap-1">
+                                        <span>格式</span>
+                                        {renderSubSortIcon('ext')}
+                                      </div>
+                                    </th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-[var(--border-subtle)]">
