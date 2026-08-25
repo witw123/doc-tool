@@ -13,7 +13,6 @@ import {
 } from '../models/compare.model.js';
 import {
   FilenamePreviewResponse,
-  SplitFieldItem,
 } from '../models/split.model.js';
 import { formatBytes } from './format.util.js';
 import { clusterCommonPrefixes, FileEntryMeta } from './prefix.util.js';
@@ -682,31 +681,28 @@ export function processLocalFolderCompare(
 }
 
 /**
- * Process filename split preview for local files using unified SplitFieldItem list
- */
-/**
- * Process filename split preview for local files using unified SplitFieldItem list
+ * Process filename split preview for local files using regex capture patterns
  */
 export function processLocalFilenameSplit(
   folderName: string,
   files: LocalScannedFile[],
-  fields: SplitFieldItem[]
+  pattern: string,
+  columns: string[]
 ): FilenamePreviewResponse {
-  if (!fields || fields.length === 0) {
-    throw new Error('请至少配置一个拆分字段');
+  if (!pattern || !pattern.trim()) {
+    throw new Error('请输入正则表达式拆分规则');
   }
 
-  const enabledFields = fields.filter((f) => f.enabled);
-  if (enabledFields.length === 0) {
-    throw new Error('请至少开启一个需要导出的字段');
+  const validColumns = columns && columns.length > 0 ? columns : ['提取列1'];
+
+  let regex: RegExp;
+  try {
+    regex = new RegExp(pattern);
+  } catch (err: any) {
+    throw new Error(`正则表达式格式错误: ${err.message}`);
   }
 
-  const headers = [
-    '文件夹名称',
-    '原始文件名',
-    ...enabledFields.map((f) => f.value.trim() || '未命名'),
-  ];
-
+  const headers = ['文件夹名称', '原始文件名', ...validColumns];
   const rows: string[][] = [];
   let unmatchedCount = 0;
   const leafDirs = new Set<string>();
@@ -715,73 +711,29 @@ export function processLocalFilenameSplit(
     const lastDotIdx = f.filename.lastIndexOf('.');
     const stem = lastDotIdx > 0 ? f.filename.substring(0, lastDotIdx) : f.filename;
 
-    let remaining = stem;
-    let matched = true;
-    const outputValues: string[] = [];
-
-    let i = 0;
-    while (i < fields.length) {
-      const current = fields[i]!;
-
-      // Find the next delimiter or terminating boundary
-      let nextDelim: string | null = null;
-      let nextDelimIdx = -1;
-
-      for (let j = i + 1; j < fields.length; j++) {
-        if (!fields[j]!.enabled || ['_', '-', '.', ' ', '/', '\\', '@', '#'].includes(fields[j]!.value)) {
-          nextDelim = fields[j]!.value;
-          nextDelimIdx = j;
-          break;
-        }
-      }
-
-      if (current.enabled) {
-        if (nextDelim && remaining.includes(nextDelim)) {
-          const splitIdx = remaining.indexOf(nextDelim);
-          const val = remaining.substring(0, splitIdx);
-          remaining = remaining.substring(splitIdx + nextDelim.length);
-          outputValues.push(val);
-          i = nextDelimIdx + 1;
-        } else if (i === fields.length - 1 || !nextDelim) {
-          outputValues.push(remaining);
-          remaining = '';
-          i += 1;
-        } else {
-          outputValues.push(remaining);
-          remaining = '';
-          matched = false;
-          i += 1;
-        }
-      } else {
-        // Disabled field acts as separator / skip token
-        if (current.value && remaining.startsWith(current.value)) {
-          remaining = remaining.substring(current.value.length);
-        } else if (current.value && remaining.includes(current.value)) {
-          const splitIdx = remaining.indexOf(current.value);
-          remaining = remaining.substring(splitIdx + current.value.length);
-        }
-        i += 1;
-      }
-    }
-
-    if (remaining.length > 0) {
-      matched = false;
-    }
-
     const relParts = f.relPath.replace(/\\/g, '/').split('/');
     const relDir = relParts.length > 1 ? relParts.slice(0, -1).join('/') : '(根目录)';
     const folderNameLeaf = relParts.length > 1 ? relParts[relParts.length - 2]! : folderName;
-
     leafDirs.add(relDir);
 
-    if (!matched) unmatchedCount += 1;
-
-    rows.push([folderNameLeaf, f.filename, ...outputValues]);
+    const match = stem.match(regex);
+    if (match) {
+      const outputValues: string[] = [];
+      for (let i = 0; i < validColumns.length; i++) {
+        const val = match[i + 1] !== undefined ? match[i + 1] : '';
+        outputValues.push(val);
+      }
+      rows.push([folderNameLeaf, f.filename, ...outputValues]);
+    } else {
+      unmatchedCount += 1;
+      const outputValues = [stem, ...Array(Math.max(0, validColumns.length - 1)).fill('')];
+      rows.push([folderNameLeaf, f.filename, ...outputValues]);
+    }
   }
 
   return {
     success: true,
-    message: 'Local split preview generated',
+    message: '拆分预览生成成功',
     headers,
     rows,
     file_count: files.length,

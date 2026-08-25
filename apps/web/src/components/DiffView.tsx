@@ -11,6 +11,7 @@ import {
   Sparkles,
   Layers,
   Check,
+  RotateCw,
 } from 'lucide-react';
 import {
   CompareResponse,
@@ -19,7 +20,7 @@ import {
   LocalScannedFile,
 } from '@doc-tool/shared';
 import { apiCompareDirectories } from '@/lib/api';
-import { pickLocalFolder } from '@/lib/local-folder-picker';
+import { pickLocalFolder, scanDirectoryHandle } from '@/lib/local-folder-picker';
 import { DiffTable } from './DiffTable';
 import { useToast } from './Toast';
 
@@ -31,12 +32,14 @@ interface DiffViewProps {
 export function DiffView({ initialDirA = '', initialDirB = '' }: DiffViewProps) {
   const { showToast } = useToast();
 
-  // Folder A & Folder B local browser files
+  // Folder A & Folder B local browser files & handles
   const [folderNameA, setFolderNameA] = useState(initialDirA || '');
   const [filesA, setFilesA] = useState<LocalScannedFile[] | null>(null);
+  const [dirHandleA, setDirHandleA] = useState<any>(null);
 
   const [folderNameB, setFolderNameB] = useState(initialDirB || '');
   const [filesB, setFilesB] = useState<LocalScannedFile[] | null>(null);
+  const [dirHandleB, setDirHandleB] = useState<any>(null);
 
   // Default mode is 'prefix_strip' (按名字前缀比对)
   const [mode, setMode] = useState<'prefix_strip' | 'relative_path' | 'filename_only'>('prefix_strip');
@@ -61,6 +64,8 @@ export function DiffView({ initialDirA = '', initialDirB = '' }: DiffViewProps) 
       setFolderNameB(initialDirB);
       setFilesA(null);
       setFilesB(null);
+      setDirHandleA(null);
+      setDirHandleB(null);
 
       setLoading(true);
       apiCompareDirectories({
@@ -91,6 +96,7 @@ export function DiffView({ initialDirA = '', initialDirB = '' }: DiffViewProps) 
       const result = await pickLocalFolder();
       setFolderNameA(result.folderName);
       setFilesA(result.files);
+      setDirHandleA(result.handle || null);
       showToast(`已选择目录 A: ${result.folderName} (${result.files.length} 个文件)`, 'info');
 
       if (filesB && filesB.length > 0) {
@@ -108,6 +114,7 @@ export function DiffView({ initialDirA = '', initialDirB = '' }: DiffViewProps) 
       const result = await pickLocalFolder();
       setFolderNameB(result.folderName);
       setFilesB(result.files);
+      setDirHandleB(result.handle || null);
       showToast(`已选择目录 B: ${result.folderName} (${result.files.length} 个文件)`, 'info');
 
       if (filesA && filesA.length > 0) {
@@ -120,13 +127,58 @@ export function DiffView({ initialDirA = '', initialDirB = '' }: DiffViewProps) 
     }
   };
 
+  const handleRefreshFolderA = async () => {
+    if (!dirHandleA) {
+      handlePickFolderA();
+      return;
+    }
+    setLoading(true);
+    try {
+      const freshFiles = await scanDirectoryHandle(dirHandleA);
+      setFilesA(freshFiles);
+      showToast(`目录 A 已刷新：共读取 ${freshFiles.length} 个最新文件`, 'success');
+      if (filesB && filesB.length > 0) {
+        runLocalCompare(folderNameA, freshFiles, folderNameB, filesB, true);
+      }
+    } catch (err: any) {
+      showToast(`刷新目录 A 失败: ${err.message}`, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRefreshFolderB = async () => {
+    if (!dirHandleB) {
+      handlePickFolderB();
+      return;
+    }
+    setLoading(true);
+    try {
+      const freshFiles = await scanDirectoryHandle(dirHandleB);
+      setFilesB(freshFiles);
+      showToast(`目录 B 已刷新：共读取 ${freshFiles.length} 个最新文件`, 'success');
+      if (filesA && filesA.length > 0) {
+        runLocalCompare(folderNameA, filesA, folderNameB, freshFiles, true);
+      }
+    } catch (err: any) {
+      showToast(`刷新目录 B 失败: ${err.message}`, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSwapDirs = () => {
     const tempName = folderNameA;
     const tempFiles = filesA;
+    const tempHandle = dirHandleA;
+
     setFolderNameA(folderNameB);
     setFilesA(filesB);
+    setDirHandleA(dirHandleB);
+
     setFolderNameB(tempName);
     setFilesB(tempFiles);
+    setDirHandleB(tempHandle);
 
     if (tempFiles && filesA) {
       runLocalCompare(folderNameB, filesB!, tempName, tempFiles);
@@ -143,7 +195,8 @@ export function DiffView({ initialDirA = '', initialDirB = '' }: DiffViewProps) 
     nameA: string,
     listA: LocalScannedFile[],
     nameB: string,
-    listB: LocalScannedFile[]
+    listB: LocalScannedFile[],
+    hasRefreshed = false
   ) => {
     setLoading(true);
     try {
@@ -162,7 +215,7 @@ export function DiffView({ initialDirA = '', initialDirB = '' }: DiffViewProps) 
 
       setCompareResult(res);
       showToast(
-        `比对完成：共比对 ${res.summary.total_unique_items} 项，匹配率 ${res.summary.match_percentage}%`,
+        `${hasRefreshed ? '已实时刷新并完成比对' : '比对完成'}：共 ${res.summary.total_unique_items} 项，匹配率 ${res.summary.match_percentage}%`,
         'success'
       );
     } finally {
@@ -171,8 +224,33 @@ export function DiffView({ initialDirA = '', initialDirB = '' }: DiffViewProps) 
   };
 
   const triggerCompare = async () => {
-    if (filesA && filesB) {
-      runLocalCompare(folderNameA, filesA, folderNameB, filesB);
+    let currentFilesA = filesA;
+    let currentFilesB = filesB;
+    let refreshed = false;
+
+    // Automatically re-scan directory handles from disk to avoid using old cached files
+    if (dirHandleA) {
+      try {
+        currentFilesA = await scanDirectoryHandle(dirHandleA);
+        setFilesA(currentFilesA);
+        refreshed = true;
+      } catch (err) {
+        console.warn('Re-scanning Dir A failed:', err);
+      }
+    }
+
+    if (dirHandleB) {
+      try {
+        currentFilesB = await scanDirectoryHandle(dirHandleB);
+        setFilesB(currentFilesB);
+        refreshed = true;
+      } catch (err) {
+        console.warn('Re-scanning Dir B failed:', err);
+      }
+    }
+
+    if (currentFilesA && currentFilesB) {
+      runLocalCompare(folderNameA, currentFilesA, folderNameB, currentFilesB, refreshed);
       return;
     }
 
@@ -225,10 +303,23 @@ export function DiffView({ initialDirA = '', initialDirB = '' }: DiffViewProps) 
                 <span>基准目录 (Directory A)</span>
               </label>
               {filesA && (
-                <span className="text-[11px] font-semibold text-emerald-accent flex items-center gap-1">
-                  <Check className="w-3 h-3" />
-                  <span>已选择 ({filesA.length} 个文件)</span>
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold text-emerald-accent flex items-center gap-1">
+                    <Check className="w-3 h-3" />
+                    <span>已选择 ({filesA.length} 个文件)</span>
+                  </span>
+                  {dirHandleA && (
+                    <button
+                      type="button"
+                      onClick={handleRefreshFolderA}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 border border-indigo-500/20 transition-all"
+                      title="从磁盘重新读取目录 A 最新文件"
+                    >
+                      <RotateCw className="w-2.5 h-2.5" />
+                      <span>刷新</span>
+                    </button>
+                  )}
+                </div>
               )}
             </div>
 
@@ -250,6 +341,7 @@ export function DiffView({ initialDirA = '', initialDirB = '' }: DiffViewProps) 
                 onChange={(e) => {
                   setFolderNameA(e.target.value);
                   setFilesA(null);
+                  setDirHandleA(null);
                 }}
                 className="flex-1 h-[42px] px-3.5 rounded-xl text-xs font-mono bg-[var(--bg-input)] text-[var(--text-primary)] border border-[var(--border-subtle)] focus:border-indigo-500 outline-none transition-all"
               />
@@ -263,15 +355,36 @@ export function DiffView({ initialDirA = '', initialDirB = '' }: DiffViewProps) 
                 <FolderOpen className="w-3.5 h-3.5 text-cyan-accent" />
                 <span>对比目录 (Directory B)</span>
               </label>
-              <button
-                type="button"
-                onClick={handleSwapDirs}
-                className="text-[11px] text-[var(--text-muted)] hover:text-cyan-accent transition-colors flex items-center gap-1"
-                title="对调 A 和 B"
-              >
-                <ArrowRightLeft className="w-3 h-3" />
-                <span>对调目录</span>
-              </button>
+              <div className="flex items-center gap-3">
+                {filesB && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-semibold text-cyan-accent flex items-center gap-1">
+                      <Check className="w-3 h-3" />
+                      <span>已选择 ({filesB.length} 个文件)</span>
+                    </span>
+                    {dirHandleB && (
+                      <button
+                        type="button"
+                        onClick={handleRefreshFolderB}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20 border border-cyan-500/20 transition-all"
+                        title="从磁盘重新读取目录 B 最新文件"
+                      >
+                        <RotateCw className="w-2.5 h-2.5" />
+                        <span>刷新</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={handleSwapDirs}
+                  className="text-[11px] text-[var(--text-muted)] hover:text-cyan-accent transition-colors flex items-center gap-1"
+                  title="对调 A 和 B"
+                >
+                  <ArrowRightLeft className="w-3 h-3" />
+                  <span>对调目录</span>
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center gap-2">
@@ -292,6 +405,7 @@ export function DiffView({ initialDirA = '', initialDirB = '' }: DiffViewProps) 
                 onChange={(e) => {
                   setFolderNameB(e.target.value);
                   setFilesB(null);
+                  setDirHandleB(null);
                 }}
                 className="flex-1 h-[42px] px-3.5 rounded-xl text-xs font-mono bg-[var(--bg-input)] text-[var(--text-primary)] border border-[var(--border-subtle)] focus:border-cyan-500 outline-none transition-all"
               />
@@ -388,22 +502,22 @@ export function DiffView({ initialDirA = '', initialDirB = '' }: DiffViewProps) 
             {useFieldMatching ? (
               <div className="flex flex-wrap items-center gap-4 pt-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-[var(--text-secondary)]">字段分隔符:</span>
+                  <span className="text-xs text-[var(--text-secondary)]">切分符号:</span>
                   <input
                     type="text"
                     value={delimiter}
                     onChange={(e) => setDelimiter(e.target.value)}
-                    className="w-14 h-8 text-center px-2 rounded-lg text-xs font-mono font-bold bg-[var(--bg-surface)] text-cyan-accent border border-[var(--border-subtle)] outline-none"
+                    className="w-12 h-7 px-2 text-center text-xs font-mono bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border-subtle)] rounded-lg outline-none"
                   />
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-[var(--text-secondary)]">选择参与比对的字段:</span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs text-[var(--text-secondary)]">比对字段:</span>
                   {[
-                    { idx: 0, label: '第 1 段 (前缀/类型)' },
-                    { idx: 1, label: '第 2 段 (年份/分类)' },
-                    { idx: 2, label: '第 3 段 (序号/编码)' },
-                    { idx: 3, label: '第 4 段' },
+                    { idx: 0, label: '第1段' },
+                    { idx: 1, label: '第2段' },
+                    { idx: 2, label: '第3段' },
+                    { idx: 3, label: '第4段' },
                   ].map((field) => {
                     const isSelected = compareFields.includes(field.idx);
                     return (
@@ -455,8 +569,24 @@ export function DiffView({ initialDirA = '', initialDirB = '' }: DiffViewProps) 
           </div>
         )}
 
-        {/* Action Button */}
-        <div className="flex justify-end pt-2">
+        {/* Action Buttons */}
+        <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
+          {(dirHandleA || dirHandleB) && (
+            <button
+              type="button"
+              disabled={loading}
+              onClick={async () => {
+                await handleRefreshFolderA();
+                await handleRefreshFolderB();
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold bg-[var(--bg-input)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] transition-all"
+              title="重新读取目录 A 和 B 的磁盘文件"
+            >
+              <RotateCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              <span>刷新最新文件</span>
+            </button>
+          )}
+
           <button
             type="button"
             disabled={loading}

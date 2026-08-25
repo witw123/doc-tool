@@ -37,17 +37,8 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
   const [subSortField, setSubSortField] = useState<SubSortField>('index');
   const [subSortOrder, setSubSortOrder] = useState<SortOrder>('asc');
 
-  // Set of expanded prefix keys
-  const [expandedPrefixes, setExpandedPrefixes] = useState<Set<string>>(() => {
-    // Default expand all if 5 or fewer prefixes, or the first one
-    const initial = new Set<string>();
-    if (prefixStats.length <= 5) {
-      prefixStats.forEach((p) => initial.add(p.prefix));
-    } else if (prefixStats.length > 0) {
-      initial.add(prefixStats[0].prefix);
-    }
-    return initial;
-  });
+  // Set of expanded prefix keys (default collapsed completely)
+  const [expandedPrefixes, setExpandedPrefixes] = useState<Set<string>>(new Set());
 
   const [search, setSearch] = useState('');
 
@@ -309,17 +300,17 @@ export function PrefixTable({ prefixStats }: PrefixTableProps) {
                 setSortField(f);
                 setSortOrder(o);
               }}
-              className="h-6 pl-1 pr-2 rounded text-xs bg-transparent text-[var(--text-primary)] font-semibold outline-none cursor-pointer"
+              className="h-6 pl-1 pr-2 rounded text-xs bg-[var(--bg-surface)] text-[var(--text-primary)] font-semibold outline-none cursor-pointer border-none"
             >
-              <option value="count-desc">文件数量 (从多到少)</option>
-              <option value="count-asc">文件数量 (从少到多)</option>
-              <option value="size-desc">占用空间 (从大到小)</option>
-              <option value="size-asc">占用空间 (从小到大)</option>
-              <option value="prefix-asc">前缀名称 (A → Z / 升序)</option>
-              <option value="prefix-desc">前缀名称 (Z → A / 降序)</option>
-              <option value="folders-desc">涉及文件夹数 (从多到少)</option>
-              <option value="folders-asc">涉及文件夹数 (从少到多)</option>
-              <option value="percentage-desc">文件数占比 (从高到低)</option>
+              <option value="count-desc" className="bg-[#181d2a] text-[#f8fafc] py-1.5">文件数量 (从多到少)</option>
+              <option value="count-asc" className="bg-[#181d2a] text-[#f8fafc] py-1.5">文件数量 (从少到多)</option>
+              <option value="size-desc" className="bg-[#181d2a] text-[#f8fafc] py-1.5">占用空间 (从大到小)</option>
+              <option value="size-asc" className="bg-[#181d2a] text-[#f8fafc] py-1.5">占用空间 (从小到大)</option>
+              <option value="prefix-asc" className="bg-[#181d2a] text-[#f8fafc] py-1.5">前缀名称 (A → Z / 升序)</option>
+              <option value="prefix-desc" className="bg-[#181d2a] text-[#f8fafc] py-1.5">前缀名称 (Z → A / 降序)</option>
+              <option value="folders-desc" className="bg-[#181d2a] text-[#f8fafc] py-1.5">涉及文件夹数 (从多到少)</option>
+              <option value="folders-asc" className="bg-[#181d2a] text-[#f8fafc] py-1.5">涉及文件夹数 (从少到多)</option>
+              <option value="percentage-desc" className="bg-[#181d2a] text-[#f8fafc] py-1.5">文件数占比 (从高到低)</option>
             </select>
           </div>
 

@@ -1,20 +1,16 @@
-export interface SplitFieldItem {
-  id: string;
-  value: string;     // 用户直接输入的字段内容或符号（如 "项目", "_", "年份", "-", "序号"）
-  enabled: boolean;   // 是否开启（开启则输出为数据列；关闭则仅作为拆分定位/跳过，不输出到列）
-}
-
 export interface UserTemplate {
   id: string;
   name: string;
-  fields: SplitFieldItem[];
+  pattern: string;    // 正则表达式捕获规则，例如 ^(\d+kV)(.*?线)(.*?支线)_(.*?)_(.+)$
+  columns: string[];  // 提取的目标列名列表，例如 ['电压等级', '主线路名', '支线名称', '部件位置', '缺陷现象']
   layout: 'grouped_sheets' | 'single_sheet';
   createdAt: number;
 }
 
 export interface FilenamePreviewRequest {
   path: string;
-  fields: SplitFieldItem[];
+  pattern: string;
+  columns: string[];
 }
 
 export interface FilenamePreviewResponse {
@@ -29,6 +25,7 @@ export interface FilenamePreviewResponse {
 
 export interface FilenameExportRequest {
   path: string;
-  fields: SplitFieldItem[];
+  pattern: string;
+  columns: string[];
   layout?: 'grouped_sheets' | 'single_sheet';
 }

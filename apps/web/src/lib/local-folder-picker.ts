@@ -3,6 +3,41 @@ import { LocalScannedFile } from '@doc-tool/shared';
 export interface LocalFolderPickResult {
   folderName: string;
   files: LocalScannedFile[];
+  handle?: any; // FileSystemDirectoryHandle if supported
+}
+
+/**
+ * Re-scan a FileSystemDirectoryHandle to get the latest files from disk.
+ */
+export async function scanDirectoryHandle(dirHandle: any): Promise<LocalScannedFile[]> {
+  const files: LocalScannedFile[] = [];
+
+  async function scanHandle(handle: any, currentRelPath: string) {
+    for await (const entry of handle.values()) {
+      if (entry.name.startsWith('.')) continue;
+
+      if (entry.kind === 'file') {
+        const fileObj = await entry.getFile();
+        const lastDot = entry.name.lastIndexOf('.');
+        const ext = lastDot > 0 ? entry.name.substring(lastDot).toLowerCase() : '';
+        const rel = currentRelPath ? `${currentRelPath}/${entry.name}` : entry.name;
+
+        files.push({
+          filename: entry.name,
+          relPath: rel,
+          size: fileObj.size,
+          mtime: new Date(fileObj.lastModified).toISOString().replace('T', ' ').slice(0, 19),
+          ext,
+        });
+      } else if (entry.kind === 'directory') {
+        const nextRel = currentRelPath ? `${currentRelPath}/${entry.name}` : entry.name;
+        await scanHandle(entry, nextRel);
+      }
+    }
+  }
+
+  await scanHandle(dirHandle, '');
+  return files;
 }
 
 /**
@@ -15,36 +50,11 @@ export async function pickLocalFolder(): Promise<LocalFolderPickResult> {
     try {
       // @ts-ignore
       const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
-      const files: LocalScannedFile[] = [];
-
-      async function scanHandle(handle: any, currentRelPath: string) {
-        for await (const entry of handle.values()) {
-          if (entry.name.startsWith('.')) continue;
-
-          if (entry.kind === 'file') {
-            const fileObj = await entry.getFile();
-            const lastDot = entry.name.lastIndexOf('.');
-            const ext = lastDot > 0 ? entry.name.substring(lastDot).toLowerCase() : '';
-            const rel = currentRelPath ? `${currentRelPath}/${entry.name}` : entry.name;
-
-            files.push({
-              filename: entry.name,
-              relPath: rel,
-              size: fileObj.size,
-              mtime: new Date(fileObj.lastModified).toISOString().replace('T', ' ').slice(0, 19),
-              ext,
-            });
-          } else if (entry.kind === 'directory') {
-            const nextRel = currentRelPath ? `${currentRelPath}/${entry.name}` : entry.name;
-            await scanHandle(entry, nextRel);
-          }
-        }
-      }
-
-      await scanHandle(dirHandle, '');
+      const files = await scanDirectoryHandle(dirHandle);
       return {
         folderName: dirHandle.name,
         files,
+        handle: dirHandle,
       };
     } catch (err: any) {
       if (err.name === 'AbortError') {

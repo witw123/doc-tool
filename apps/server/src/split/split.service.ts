@@ -3,7 +3,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import ExcelJS from 'exceljs';
 import {
-  SplitFieldItem,
   FilenamePreviewRequest,
   FilenamePreviewResponse,
   FilenameExportRequest,
@@ -27,9 +26,9 @@ export class SplitService {
 
   private validateRequest(
     rawPath: string,
-    rawFields: SplitFieldItem[],
-    requestBody?: any
-  ): { targetPath: string; validFields: SplitFieldItem[]; enabledFields: SplitFieldItem[] } {
+    rawPattern: string,
+    rawColumns: string[]
+  ): { targetPath: string; pattern: string; columns: string[]; regex: RegExp } {
     const trimmedPath = (rawPath || '').trim();
     if (!trimmedPath) {
       throw new BadRequestException('文件夹路径不能为空');
@@ -43,99 +42,29 @@ export class SplitService {
       throw new BadRequestException(`路径不是文件夹: ${trimmedPath}`);
     }
 
-    let fields = rawFields;
-    if (!fields || !Array.isArray(fields) || fields.length === 0) {
-      if (requestBody?.fields && Array.isArray(requestBody.fields)) {
-        fields = requestBody.fields.map((f: any, idx: number) => ({
-          id: f.id || `f_${idx}`,
-          value: f.value || f.name || `字段${idx + 1}`,
-          enabled: f.enabled !== false,
-        }));
-      } else {
-        fields = [
-          { id: 'f_1', value: '项目', enabled: true },
-          { id: 'f_2', value: '_', enabled: false },
-          { id: 'f_3', value: '年份', enabled: true },
-          { id: 'f_4', value: '_', enabled: false },
-          { id: 'f_5', value: '序号', enabled: true },
-        ];
-      }
+    const pattern = (rawPattern || '').trim();
+    if (!pattern) {
+      throw new BadRequestException('拆分正则表达式规则不能为空');
     }
 
-    const enabledFields = fields.filter((f) => f.enabled);
-    if (enabledFields.length === 0) {
-      throw new BadRequestException('请至少开启一个需要导出的字段');
+    let regex: RegExp;
+    try {
+      regex = new RegExp(pattern);
+    } catch (err: any) {
+      throw new BadRequestException(`正则表达式格式错误: ${err.message}`);
     }
 
-    return { targetPath, validFields: fields, enabledFields };
-  }
+    const columns = Array.isArray(rawColumns) && rawColumns.length > 0
+      ? rawColumns
+      : ['提取列1'];
 
-  private splitFilename(
-    filename: string,
-    fields: SplitFieldItem[]
-  ): { values: string[]; status: '匹配' | '不匹配' } {
-    const lastDotIdx = filename.lastIndexOf('.');
-    const stem = lastDotIdx > 0 ? filename.substring(0, lastDotIdx) : filename;
-
-    let remaining = stem;
-    let matched = true;
-    const outputValues: string[] = [];
-
-    let i = 0;
-    while (i < fields.length) {
-      const current = fields[i]!;
-
-      // Find the next delimiter or terminating boundary
-      let nextDelim: string | null = null;
-      let nextDelimIdx = -1;
-
-      for (let j = i + 1; j < fields.length; j++) {
-        if (!fields[j]!.enabled || ['_', '-', '.', ' ', '/', '\\', '@', '#'].includes(fields[j]!.value)) {
-          nextDelim = fields[j]!.value;
-          nextDelimIdx = j;
-          break;
-        }
-      }
-
-      if (current.enabled) {
-        if (nextDelim && remaining.includes(nextDelim)) {
-          const splitIdx = remaining.indexOf(nextDelim);
-          const val = remaining.substring(0, splitIdx);
-          remaining = remaining.substring(splitIdx + nextDelim.length);
-          outputValues.push(val);
-          i = nextDelimIdx + 1;
-        } else if (i === fields.length - 1 || !nextDelim) {
-          outputValues.push(remaining);
-          remaining = '';
-          i += 1;
-        } else {
-          outputValues.push(remaining);
-          remaining = '';
-          matched = false;
-          i += 1;
-        }
-      } else {
-        // Disabled field acts as separator / skip token
-        if (current.value && remaining.startsWith(current.value)) {
-          remaining = remaining.substring(current.value.length);
-        } else if (current.value && remaining.includes(current.value)) {
-          const splitIdx = remaining.indexOf(current.value);
-          remaining = remaining.substring(splitIdx + current.value.length);
-        }
-        i += 1;
-      }
-    }
-
-    if (remaining.length > 0) {
-      matched = false;
-    }
-
-    return { values: outputValues, status: matched ? '匹配' : '不匹配' };
+    return { targetPath, pattern, columns, regex };
   }
 
   private collectLeafRows(
     targetPath: string,
-    fields: SplitFieldItem[]
+    regex: RegExp,
+    columns: string[]
   ): { grouped: Map<string, string[][]>; fileCount: number; unmatchedCount: number } {
     const grouped = new Map<string, string[][]>();
     let fileCount = 0;
@@ -174,12 +103,23 @@ export class SplitService {
         const rows: string[][] = [];
 
         for (const filename of files) {
-          const { values, status } = this.splitFilename(filename, fields);
-          rows.push([folderName, filename, ...values]);
-          fileCount += 1;
-          if (status === '不匹配') {
+          const lastDotIdx = filename.lastIndexOf('.');
+          const stem = lastDotIdx > 0 ? filename.substring(0, lastDotIdx) : filename;
+
+          const match = stem.match(regex);
+          if (match) {
+            const outputValues: string[] = [];
+            for (let i = 0; i < columns.length; i++) {
+              const val = match[i + 1] !== undefined ? match[i + 1] : '';
+              outputValues.push(val);
+            }
+            rows.push([folderName, filename, ...outputValues]);
+          } else {
             unmatchedCount += 1;
+            const outputValues = [stem, ...Array(Math.max(0, columns.length - 1)).fill('')];
+            rows.push([folderName, filename, ...outputValues]);
           }
+          fileCount += 1;
         }
 
         grouped.set(relDir, rows);
@@ -206,21 +146,19 @@ export class SplitService {
   }
 
   preview(request: FilenamePreviewRequest): FilenamePreviewResponse {
-    const { targetPath, validFields, enabledFields } = this.validateRequest(
+    const { targetPath, columns, regex } = this.validateRequest(
       request.path,
-      request.fields,
-      request
+      request.pattern,
+      request.columns
     );
 
-    const { grouped, fileCount, unmatchedCount } = this.collectLeafRows(targetPath, validFields);
+    const { grouped, fileCount, unmatchedCount } = this.collectLeafRows(targetPath, regex, columns);
 
     if (fileCount === 0) {
       throw new BadRequestException('未找到可预览的叶子文件夹文件');
     }
 
-    const enabledFieldNames = enabledFields.map((b) => b.value.trim() || '未命名');
-
-    const headers = ['文件夹名称', '原始文件名', ...enabledFieldNames];
+    const headers = ['文件夹名称', '原始文件名', ...columns];
     const rows: string[][] = [];
 
     const sortedKeys = Array.from(grouped.keys()).sort();
@@ -230,7 +168,7 @@ export class SplitService {
 
     return {
       success: true,
-      message: 'Filename split preview generated successfully',
+      message: '拆分预览生成成功',
       headers,
       rows,
       file_count: fileCount,
@@ -242,22 +180,20 @@ export class SplitService {
   async exportXlsx(
     request: FilenameExportRequest
   ): Promise<{ buffer: Buffer; filename: string; file_count: number; leaf_count: number }> {
-    const { targetPath, validFields, enabledFields } = this.validateRequest(
+    const { targetPath, columns, regex } = this.validateRequest(
       request.path,
-      request.fields,
-      request
+      request.pattern,
+      request.columns
     );
 
     const layout = request.layout || 'grouped_sheets';
-    const { grouped, fileCount } = this.collectLeafRows(targetPath, validFields);
+    const { grouped, fileCount } = this.collectLeafRows(targetPath, regex, columns);
 
     if (fileCount === 0) {
       throw new BadRequestException('未找到可导出的叶子文件夹文件');
     }
 
-    const enabledFieldNames = enabledFields.map((b) => b.value.trim() || '未命名');
-
-    const headers = ['文件夹名称', '原始文件名', ...enabledFieldNames];
+    const headers = ['文件夹名称', '原始文件名', ...columns];
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'FileScope';
     workbook.created = new Date();

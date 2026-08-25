@@ -13,10 +13,11 @@ import {
   FolderCheck,
   Zap,
   Check,
+  RotateCw,
 } from 'lucide-react';
 import { ScanResponse, ScanRequest, processLocalFolderScan, LocalScannedFile } from '@doc-tool/shared';
 import { apiScanDirectory } from '@/lib/api';
-import { pickLocalFolder } from '@/lib/local-folder-picker';
+import { pickLocalFolder, scanDirectoryHandle } from '@/lib/local-folder-picker';
 import { PrefixTable } from './PrefixTable';
 import { useToast } from './Toast';
 
@@ -31,6 +32,7 @@ export function StatsView({ initialPath = '' }: StatsViewProps) {
 
   const [path, setPath] = useState(initialPath);
   const [localFiles, setLocalFiles] = useState<LocalScannedFile[] | null>(null);
+  const [localHandle, setLocalHandle] = useState<any>(null);
   const [folderDisplayName, setFolderDisplayName] = useState('');
 
   const [prefixes, setPrefixes] = useState<string[]>([]);
@@ -70,16 +72,24 @@ export function StatsView({ initialPath = '' }: StatsViewProps) {
 
   const savePrefixes = (newPrefixes: string[]) => {
     setPrefixes(newPrefixes);
-    localStorage.setItem(STORAGE_KEY_PREFIXES, JSON.stringify(newPrefixes));
+    try {
+      localStorage.setItem(STORAGE_KEY_PREFIXES, JSON.stringify(newPrefixes));
+    } catch {
+      // ignore
+    }
   };
 
   const handleAddTag = () => {
-    const val = tagInput.trim();
-    if (val && !prefixes.includes(val)) {
-      const updated = [...prefixes, val];
-      savePrefixes(updated);
-      setTagInput('');
+    const trimmed = tagInput.trim();
+    if (!trimmed) return;
+    if (prefixes.includes(trimmed)) {
+      showToast(`前缀「${trimmed}」已在列表中`, 'warning');
+      return;
     }
+    const next = [...prefixes, trimmed];
+    savePrefixes(next);
+    setTagInput('');
+    showToast(`已添加指定前缀「${trimmed}」`, 'success');
   };
 
   const handleRemoveTag = (tag: string) => {
@@ -98,6 +108,7 @@ export function StatsView({ initialPath = '' }: StatsViewProps) {
       setLoading(true);
       const result = await pickLocalFolder();
       setLocalFiles(result.files);
+      setLocalHandle(result.handle || null);
       setFolderDisplayName(result.folderName);
       setPath(result.folderName);
 
@@ -123,11 +134,47 @@ export function StatsView({ initialPath = '' }: StatsViewProps) {
     }
   };
 
+  const handleRefreshFolder = async () => {
+    if (!localHandle) {
+      handlePickLocalFolder();
+      return;
+    }
+    setLoading(true);
+    try {
+      const freshFiles = await scanDirectoryHandle(localHandle);
+      setLocalFiles(freshFiles);
+      const res = processLocalFolderScan(folderDisplayName || '选择的文件夹', freshFiles, {
+        prefixes: prefixes.length > 0 ? prefixes : undefined,
+        includeRegex: includeRegex.trim() || undefined,
+        excludeRegex: excludeRegex.trim() || undefined,
+        maxDepth: maxDepth !== '' ? Number(maxDepth) : undefined,
+      });
+      setScanResult(res);
+      showToast(`已刷新读取最新文件：共 ${res.summary.total_files} 个文件`, 'success');
+    } catch (err: any) {
+      showToast(`刷新失败: ${err.message}`, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const triggerScan = async (targetPath?: string) => {
-    if (localFiles && localFiles.length > 0) {
+    let currentFiles = localFiles;
+
+    // Automatically re-scan handle from disk if available to guarantee fresh files
+    if (localHandle) {
+      try {
+        currentFiles = await scanDirectoryHandle(localHandle);
+        setLocalFiles(currentFiles);
+      } catch (err) {
+        console.warn('Re-scanning handle failed:', err);
+      }
+    }
+
+    if (currentFiles && currentFiles.length > 0) {
       setLoading(true);
       try {
-        const res = processLocalFolderScan(folderDisplayName || '选择的文件夹', localFiles, {
+        const res = processLocalFolderScan(folderDisplayName || '选择的文件夹', currentFiles, {
           prefixes: prefixes.length > 0 ? prefixes : undefined,
           includeRegex: includeRegex.trim() || undefined,
           excludeRegex: excludeRegex.trim() || undefined,
@@ -183,10 +230,23 @@ export function StatsView({ initialPath = '' }: StatsViewProps) {
                 <span>选择用户的电脑文件夹</span>
               </label>
               {localFiles && (
-                <span className="text-[11px] font-semibold text-emerald-accent flex items-center gap-1">
-                  <Check className="w-3 h-3" />
-                  <span>已载入 {localFiles.length} 个文件</span>
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold text-emerald-accent flex items-center gap-1">
+                    <Check className="w-3 h-3" />
+                    <span>已载入 {localFiles.length} 个文件</span>
+                  </span>
+                  {localHandle && (
+                    <button
+                      type="button"
+                      onClick={handleRefreshFolder}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 border border-indigo-500/20 transition-all"
+                      title="从磁盘重新读取最新文件"
+                    >
+                      <RotateCw className="w-2.5 h-2.5" />
+                      <span>刷新</span>
+                    </button>
+                  )}
+                </div>
               )}
             </div>
 

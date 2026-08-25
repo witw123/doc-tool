@@ -1,50 +1,35 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   FolderOpen,
   FileSpreadsheet,
   Download,
   Eye,
   Plus,
-  Bookmark,
-  X,
-  Edit2,
   Trash2,
   Search,
   Check,
-  GripVertical,
-  SlidersHorizontal,
   Sparkles,
-  ToggleLeft,
-  ToggleRight,
-  MoveHorizontal,
   Layers,
+  FileText,
+  RotateCw,
+  Zap,
+  ArrowRight,
+  Split,
 } from 'lucide-react';
 import {
   FilenamePreviewResponse,
-  FilenamePreviewRequest,
-  FilenameExportRequest,
   processLocalFilenameSplit,
+  inferSegmentsFromSample,
   LocalScannedFile,
-  SplitFieldItem,
-  UserTemplate,
 } from '@doc-tool/shared';
 import { apiPreviewFilenameSplit, apiExportFilenameSplitXlsx } from '@/lib/api';
-import { pickLocalFolder } from '@/lib/local-folder-picker';
+import { pickLocalFolder, scanDirectoryHandle } from '@/lib/local-folder-picker';
 import { exportLocalSplitExcel } from '@/lib/excel-export';
 import { useToast } from './Toast';
 
-const STORAGE_KEY_TEMPLATES = 'filescope_user_custom_templates_v5';
-const STORAGE_KEY_ACTIVE_TEMPLATE = 'filescope_active_template_id_v5';
-
-const createDefaultFields = (): SplitFieldItem[] => [
-  { id: 'f_1', value: '项目', enabled: true },
-  { id: 'f_2', value: '_', enabled: false },
-  { id: 'f_3', value: '年份', enabled: true },
-  { id: 'f_4', value: '_', enabled: false },
-  { id: 'f_5', value: '序号', enabled: true },
-];
+const DEFAULT_SAMPLE = '10kV范西292线宏伟支线_右横担_柱瓶-绝缘子破损';
 
 interface FilenameSplitViewProps {
   initialPath?: string;
@@ -53,145 +38,66 @@ interface FilenameSplitViewProps {
 export function FilenameSplitView({ initialPath = '' }: FilenameSplitViewProps) {
   const { showToast } = useToast();
 
-  // Step 1: Directory Selection
+  // Folder & Files State
   const [path, setPath] = useState(initialPath);
   const [folderDisplayName, setFolderDisplayName] = useState(initialPath || '');
   const [localFiles, setLocalFiles] = useState<LocalScannedFile[] | null>(null);
+  const [dirHandle, setDirHandle] = useState<any>(null);
 
-  // Step 2: Templates (Compact Unified Field Sequence)
-  const [templates, setTemplates] = useState<UserTemplate[]>([]);
-  const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
+  // Sample format input (用户发/输入的成品命名格式)
+  const [sampleInput, setSampleInput] = useState(DEFAULT_SAMPLE);
 
-  // Template Modal Editor State (Compact Drag & Drop Sequence)
-  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
-  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
-  const [modalName, setModalName] = useState('');
-  const [modalFields, setModalFields] = useState<SplitFieldItem[]>(createDefaultFields());
-  const [modalLayout, setModalLayout] = useState<'grouped_sheets' | 'single_sheet'>('grouped_sheets');
+  // Auto-inferred pattern & columns
+  const [pattern, setPattern] = useState('');
+  const [columns, setColumns] = useState<string[]>([]);
+  const [segments, setSegments] = useState<{ id: string; sampleValue: string; columnName: string }[]>([]);
 
-  // Drag and drop tracking
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  // Excel Layout
+  const [layout, setLayout] = useState<'grouped_sheets' | 'single_sheet'>('grouped_sheets');
 
-  // Step 3: Preview & Export
+  // Preview & Export State
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [previewResult, setPreviewResult] = useState<FilenamePreviewResponse | null>(null);
   const [searchFilter, setSearchFilter] = useState('');
 
-  // Normalize template structure to guarantee resilience
-  const normalizeTemplate = (t: any): UserTemplate => {
-    let fields: SplitFieldItem[] = [];
-
-    if (Array.isArray(t?.fields) && t.fields.length > 0) {
-      fields = t.fields.map((f: any, idx: number) => ({
-        id: f.id || `f_${idx}`,
-        value: f.value || f.name || `字段${idx + 1}`,
-        enabled: f.enabled !== false,
-      }));
-    } else if (Array.isArray(t?.items) && t.items.length > 0) {
-      for (let i = 0; i < t.items.length; i++) {
-        if (t.items[i].type === 'field') {
-          fields.push({
-            id: t.items[i].id || `f_${fields.length + 1}`,
-            value: t.items[i].name || `字段${fields.length + 1}`,
-            enabled: t.items[i].enabled !== false,
-          });
-        } else if (t.items[i].type === 'delimiter') {
-          fields.push({
-            id: t.items[i].id || `d_${fields.length + 1}`,
-            value: t.items[i].value || '_',
-            enabled: false,
-          });
-        }
-      }
-    }
-
-    if (fields.length === 0) {
-      fields = createDefaultFields();
-    }
-
-    return {
-      id: t?.id || `tpl_${Date.now()}`,
-      name: t?.name || '项目_年份_序号',
-      fields,
-      layout: t?.layout || 'grouped_sheets',
-      createdAt: t?.createdAt || Date.now(),
-    };
-  };
-
-  // Load user templates from localStorage
+  // Automatically parse sample whenever sampleInput changes
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_TEMPLATES);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const normalized = parsed.map((t) => normalizeTemplate(t));
-          setTemplates(normalized);
-          const savedActive = localStorage.getItem(STORAGE_KEY_ACTIVE_TEMPLATE);
-          if (savedActive && normalized.some((t) => t.id === savedActive)) {
-            setActiveTemplateId(savedActive);
-          } else {
-            setActiveTemplateId(normalized[0].id);
-          }
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
+    if (!sampleInput.trim()) return;
+    const inferred = inferSegmentsFromSample(sampleInput.trim());
+    setPattern(inferred.pattern);
+    setColumns(inferred.columns);
+    setSegments(inferred.segments);
+  }, [sampleInput]);
 
-  // Sync initial path
-  useEffect(() => {
-    if (initialPath) {
-      setPath(initialPath);
-      setFolderDisplayName(initialPath);
-      setLocalFiles(null);
-
-      let tplToRun = templates.find((t) => t.id === activeTemplateId) || null;
-      if (!tplToRun) {
-        const defaultTpl = normalizeTemplate({
-          id: 'tpl_preset_default',
-          name: '项目_年份_序号',
-          fields: createDefaultFields(),
-          layout: 'grouped_sheets',
-          createdAt: Date.now(),
-        });
-        setTemplates([defaultTpl]);
-        setActiveTemplateId(defaultTpl.id);
-        tplToRun = defaultTpl;
-      }
-      if (tplToRun) {
-        runPreview(tplToRun);
-      }
-    }
-  }, [initialPath]);
-
-  const activeTemplate = templates.find((t) => t.id === activeTemplateId) || null;
-
-  // Auto-run preview when folder and template are both selected
-  useEffect(() => {
-    if ((localFiles && localFiles.length > 0) || path.trim()) {
-      if (activeTemplate) {
-        runPreview(activeTemplate);
-      }
-    }
-  }, [localFiles, path, activeTemplateId]);
-
-  // Step 1: Pick local folder
-  const handlePickLocalFolder = async () => {
+  // Pick Native Folder
+  const handlePickFolder = async () => {
     try {
       setLoading(true);
-      const result = await pickLocalFolder();
-      setLocalFiles(result.files);
-      setFolderDisplayName(result.folderName);
-      setPath(result.folderName);
+      const res = await pickLocalFolder();
+      setFolderDisplayName(res.folderName);
+      setPath(res.folderName);
+      setLocalFiles(res.files);
+      setDirHandle(res.handle || null);
 
-      showToast(`已载入「${result.folderName}」，共 ${result.files.length} 个文件`, 'success');
+      showToast(`已选择文件夹「${res.folderName}」，共计 ${res.files.length} 个文件`, 'success');
 
-      if (templates.length === 0) {
-        openCreateTemplateModal();
+      // If user has not changed sample or if files are present, automatically adopt the 1st file as sample
+      if (res.files.length > 0) {
+        const firstFile = res.files[0]!.filename;
+        setSampleInput(firstFile);
+        const inferred = inferSegmentsFromSample(firstFile);
+        try {
+          const preview = processLocalFilenameSplit(
+            res.folderName,
+            res.files,
+            inferred.pattern,
+            inferred.columns
+          );
+          setPreviewResult(preview);
+        } catch {
+          // ignore
+        }
       }
     } catch (err: any) {
       if (err.message !== '用户取消了文件夹选择') {
@@ -202,620 +108,427 @@ export function FilenameSplitView({ initialPath = '' }: FilenameSplitViewProps) 
     }
   };
 
-  // Step 2: Modal controls
-  const openCreateTemplateModal = () => {
-    setEditingTemplateId(null);
-    setModalName(`规则 ${templates.length + 1}`);
-    setModalFields(createDefaultFields());
-    setModalLayout('grouped_sheets');
-    setIsTemplateModalOpen(true);
-  };
-
-  const openEditTemplateModal = (tpl: UserTemplate, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    setEditingTemplateId(tpl.id);
-    setModalName(tpl.name);
-    setModalFields(
-      tpl.fields && tpl.fields.length > 0
-        ? JSON.parse(JSON.stringify(tpl.fields))
-        : createDefaultFields()
-    );
-    setModalLayout(tpl.layout || 'grouped_sheets');
-    setIsTemplateModalOpen(true);
-  };
-
-  // Drag and Drop Handlers
-  const handleDragStart = (e: React.DragEvent, index: number) => {
-    e.dataTransfer.setData('text/plain', index.toString());
-    e.dataTransfer.effectAllowed = 'move';
-    setDraggedIndex(index);
-  };
-
-  const handleDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (dragOverIndex !== index) {
-      setDragOverIndex(index);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent, targetIndex: number) => {
-    e.preventDefault();
-    if (draggedIndex === null || draggedIndex === targetIndex) {
-      setDraggedIndex(null);
-      setDragOverIndex(null);
+  // Refresh Folder from Disk
+  const handleRefreshFolder = async () => {
+    if (!dirHandle) {
+      handlePickFolder();
       return;
     }
-
-    const updated = [...modalFields];
-    const [removed] = updated.splice(draggedIndex, 1);
-    updated.splice(targetIndex, 0, removed!);
-
-    setModalFields(updated);
-    setDraggedIndex(null);
-    setDragOverIndex(null);
-  };
-
-  const handleDragEnd = () => {
-    setDraggedIndex(null);
-    setDragOverIndex(null);
-  };
-
-  // Compact Field Operations
-  const handleAddField = (defaultValue: string = '', isEnabled: boolean = true) => {
-    const fieldCount = modalFields.filter((f) => f.enabled).length + 1;
-    const newField: SplitFieldItem = {
-      id: `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      value: defaultValue || `字段${fieldCount}`,
-      enabled: isEnabled,
-    };
-    setModalFields((prev) => [...prev, newField]);
-  };
-
-  const handleToggleFieldEnable = (id: string) => {
-    setModalFields((prev) =>
-      prev.map((f) => (f.id === id ? { ...f, enabled: !f.enabled } : f))
-    );
-  };
-
-  const handleUpdateFieldValue = (id: string, value: string) => {
-    setModalFields((prev) =>
-      prev.map((f) => (f.id === id ? { ...f, value } : f))
-    );
-  };
-
-  const handleDeleteField = (id: string) => {
-    if (modalFields.length <= 1) {
-      showToast('至少需保留一个字段', 'warning');
-      return;
-    }
-    setModalFields((prev) => prev.filter((f) => f.id !== id));
-  };
-
-  const handleApplyPreset = (presetType: 'underscore' | 'hyphen' | 'dot' | 'mixed') => {
-    if (presetType === 'underscore') {
-      setModalFields([
-        { id: `f_${Date.now()}_1`, value: '项目', enabled: true },
-        { id: `f_${Date.now()}_2`, value: '_', enabled: false },
-        { id: `f_${Date.now()}_3`, value: '年份', enabled: true },
-        { id: `f_${Date.now()}_4`, value: '_', enabled: false },
-        { id: `f_${Date.now()}_5`, value: '序号', enabled: true },
-      ]);
-    } else if (presetType === 'hyphen') {
-      setModalFields([
-        { id: `f_${Date.now()}_1`, value: '部门', enabled: true },
-        { id: `f_${Date.now()}_2`, value: '-', enabled: false },
-        { id: `f_${Date.now()}_3`, value: '年份', enabled: true },
-        { id: `f_${Date.now()}_4`, value: '-', enabled: false },
-        { id: `f_${Date.now()}_5`, value: '月份', enabled: true },
-      ]);
-    } else if (presetType === 'dot') {
-      setModalFields([
-        { id: `f_${Date.now()}_1`, value: '模块', enabled: true },
-        { id: `f_${Date.now()}_2`, value: '.', enabled: false },
-        { id: `f_${Date.now()}_3`, value: '版本', enabled: true },
-        { id: `f_${Date.now()}_4`, value: '.', enabled: false },
-        { id: `f_${Date.now()}_5`, value: '补丁', enabled: true },
-      ]);
-    } else {
-      setModalFields([
-        { id: `f_${Date.now()}_1`, value: '合同编号', enabled: true },
-        { id: `f_${Date.now()}_2`, value: '_', enabled: false },
-        { id: `f_${Date.now()}_3`, value: '甲方', enabled: true },
-        { id: `f_${Date.now()}_4`, value: '-', enabled: false },
-        { id: `f_${Date.now()}_5`, value: '版本', enabled: true },
-      ]);
-    }
-  };
-
-  const handleSaveTemplate = () => {
-    const name = modalName.trim();
-    if (!name) {
-      showToast('请输入规则名称', 'warning');
-      return;
-    }
-    if (modalFields.length === 0) {
-      showToast('至少需要配置一个字段', 'warning');
-      return;
-    }
-
-    const enabledFields = modalFields.filter((f) => f.enabled);
-    if (enabledFields.length === 0) {
-      showToast('请至少开启一个需要导出的字段', 'warning');
-      return;
-    }
-
-    let updatedTemplates: UserTemplate[];
-    let targetId: string;
-
-    if (editingTemplateId) {
-      targetId = editingTemplateId;
-      updatedTemplates = templates.map((t) =>
-        t.id === editingTemplateId
-          ? {
-              ...t,
-              name,
-              fields: JSON.parse(JSON.stringify(modalFields)),
-              layout: modalLayout,
-            }
-          : t
-      );
-      showToast(`规则「${name}」已更新`, 'success');
-    } else {
-      targetId = `tpl_${Date.now()}`;
-      const newTpl: UserTemplate = {
-        id: targetId,
-        name,
-        fields: JSON.parse(JSON.stringify(modalFields)),
-        layout: modalLayout,
-        createdAt: Date.now(),
-      };
-      updatedTemplates = [...templates, newTpl];
-      showToast(`规则「${name}」创建成功`, 'success');
-    }
-
-    setTemplates(updatedTemplates);
-    localStorage.setItem(STORAGE_KEY_TEMPLATES, JSON.stringify(updatedTemplates));
-    setActiveTemplateId(targetId);
-    localStorage.setItem(STORAGE_KEY_ACTIVE_TEMPLATE, targetId);
-
-    setIsTemplateModalOpen(false);
-  };
-
-  const handleDeleteTemplate = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const updated = templates.filter((t) => t.id !== id);
-    setTemplates(updated);
-    localStorage.setItem(STORAGE_KEY_TEMPLATES, JSON.stringify(updated));
-
-    if (activeTemplateId === id) {
-      const nextActive = updated.length > 0 ? updated[0].id : null;
-      setActiveTemplateId(nextActive);
-      if (nextActive) {
-        localStorage.setItem(STORAGE_KEY_ACTIVE_TEMPLATE, nextActive);
-      } else {
-        localStorage.removeItem(STORAGE_KEY_ACTIVE_TEMPLATE);
-        setPreviewResult(null);
+    setLoading(true);
+    try {
+      const freshFiles = await scanDirectoryHandle(dirHandle);
+      setLocalFiles(freshFiles);
+      showToast(`已刷新读取最新文件：共 ${freshFiles.length} 个文件`, 'success');
+      if (freshFiles.length > 0) {
+        const preview = processLocalFilenameSplit(
+          folderDisplayName || '选择的文件夹',
+          freshFiles,
+          pattern,
+          columns
+        );
+        setPreviewResult(preview);
       }
+    } catch (err: any) {
+      showToast(`刷新失败: ${err.message}`, 'error');
+    } finally {
+      setLoading(false);
     }
-    showToast('已删除规则', 'info');
   };
 
-  // Step 3: Run preview
-  const runPreview = async (templateToUse: UserTemplate) => {
-    const safeTpl = normalizeTemplate(templateToUse);
+  // Update a column's name
+  const handleUpdateColumnName = (index: number, newName: string) => {
+    setColumns((prev) => {
+      const next = [...prev];
+      next[index] = newName;
+      return next;
+    });
+    setSegments((prev) => {
+      const next = [...prev];
+      if (next[index]) {
+        next[index] = { ...next[index], columnName: newName };
+      }
+      return next;
+    });
+  };
+
+  // Execute Preview
+  const handlePreview = async () => {
+    if (!pattern.trim()) {
+      showToast('请输入成品命名格式样例', 'warning');
+      return;
+    }
 
     if (localFiles && localFiles.length > 0) {
+      let currentFiles = localFiles;
+      if (dirHandle) {
+        try {
+          currentFiles = await scanDirectoryHandle(dirHandle);
+          setLocalFiles(currentFiles);
+        } catch {
+          // ignore
+        }
+      }
+
       setLoading(true);
       try {
         const res = processLocalFilenameSplit(
           folderDisplayName || '选择的文件夹',
-          localFiles,
-          safeTpl.fields
+          currentFiles,
+          pattern,
+          columns
         );
         setPreviewResult(res);
+        showToast(`解析完成：共 ${res.file_count} 个文件`, 'success');
       } catch (err: any) {
-        showToast(`生成预览失败: ${err.message}`, 'error');
+        showToast(`解析失败: ${err.message}`, 'error');
       } finally {
         setLoading(false);
       }
       return;
     }
 
-    if (path.trim()) {
-      setLoading(true);
-      try {
-        const req: FilenamePreviewRequest = {
-          path: path.trim(),
-          fields: safeTpl.fields,
-        };
-        const res = await apiPreviewFilenameSplit(req);
-        setPreviewResult(res);
-      } catch (err: any) {
-        showToast(`生成预览失败: ${err.message}`, 'error');
-      } finally {
-        setLoading(false);
-      }
+    if (!path.trim()) {
+      showToast('请先选择或输入目标文件夹路径', 'warning');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await apiPreviewFilenameSplit({
+        path: path.trim(),
+        pattern,
+        columns,
+      });
+      setPreviewResult(res);
+      showToast(`解析完成：共检索到 ${res.file_count} 个文件`, 'success');
+    } catch (err: any) {
+      showToast(`解析失败: ${err.message}`, 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Step 3: Export Excel
-  const handleExportXlsx = async () => {
-    if (!activeTemplate) {
-      showToast('请先选择拆分规则', 'warning');
+  // Export Excel
+  const handleExport = async () => {
+    if (!pattern.trim()) {
+      showToast('请输入成品命名格式样例', 'warning');
       return;
     }
 
     setExporting(true);
     try {
-      if (previewResult && previewResult.rows.length > 0) {
+      if (localFiles && localFiles.length > 0) {
+        let currentFiles = localFiles;
+        if (dirHandle) {
+          try {
+            currentFiles = await scanDirectoryHandle(dirHandle);
+            setLocalFiles(currentFiles);
+          } catch {
+            // ignore
+          }
+        }
+
+        const preview = processLocalFilenameSplit(
+          folderDisplayName || '选择的文件夹',
+          currentFiles,
+          pattern,
+          columns
+        );
         const { blob, filename } = await exportLocalSplitExcel(
-          previewResult.headers,
-          previewResult.rows,
-          activeTemplate.layout
+          preview.headers,
+          preview.rows,
+          layout
         );
 
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = filename;
-        document.body.appendChild(a);
         a.click();
-        document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        showToast(`Excel 导出成功: ${filename}`, 'success');
-      } else if (path.trim()) {
-        const req: FilenameExportRequest = {
-          path: path.trim(),
-          fields: activeTemplate.fields,
-          layout: activeTemplate.layout,
-        };
-        const { blob, filename } = await apiExportFilenameSplitXlsx(req);
+        showToast(`Excel 导出成功：共 ${preview.file_count} 条记录`, 'success');
+      } else {
+        if (!path.trim()) {
+          showToast('请先选择或输入目标文件夹路径', 'warning');
+          return;
+        }
 
-        const url = URL.createObjectURL(blob);
+        const res = await apiExportFilenameSplitXlsx({
+          path: path.trim(),
+          pattern,
+          columns,
+          layout,
+        });
+
+        const url = URL.createObjectURL(res.blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
+        a.download = res.filename || `filename_split_export_${new Date().toISOString().slice(0, 10)}.xlsx`;
         a.click();
-        document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        showToast(`Excel 导出成功: ${filename}`, 'success');
-      } else {
-        showToast('请先选择文件夹', 'warning');
+        showToast('Excel 导出成功！', 'success');
       }
     } catch (err: any) {
-      showToast(`导出 Excel 失败: ${err.message}`, 'error');
+      showToast(`导出失败: ${err.message}`, 'error');
     } finally {
       setExporting(false);
     }
   };
 
-  // Filter preview rows
-  const filteredRows = previewResult
-    ? previewResult.rows.filter((r) =>
-        searchFilter ? r.some((c) => c.toLowerCase().includes(searchFilter.toLowerCase())) : true
-      )
-    : [];
+  // Filtered rows for preview table
+  const filteredRows = useMemo(() => {
+    if (!previewResult?.rows) return [];
+    if (!searchFilter.trim()) return previewResult.rows;
+    const s = searchFilter.toLowerCase();
+    return previewResult.rows.filter((row) =>
+      row.some((cell) => String(cell).toLowerCase().includes(s))
+    );
+  }, [previewResult, searchFilter]);
 
   return (
-    <div className="space-y-6">
-      {/* 3-Step Container Card */}
-      <div className="glass-panel p-6 sm:p-7 space-y-6">
-        {/* Header Title */}
-        <div className="border-b border-[var(--border-subtle)] pb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
-              <FileSpreadsheet className="w-4 h-4 text-brand-accent" />
-            </div>
-            <div>
-              <h2 className="text-base sm:text-lg font-bold text-[var(--text-primary)]">
-                文件名拆分导出
-              </h2>
-              <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                自由组合输入字段与符号，支持开关任意字段，生成清晰的多列表格并导出 Excel
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* STEP 1: Select Computer Folder */}
+    <div className="space-y-6 animate-in fade-in duration-200">
+      {/* Main Unified Input Card */}
+      <div className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-5 sm:p-6 shadow-xl space-y-5">
+        {/* Step 1: Folder Selection */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="w-5 h-5 rounded-full bg-indigo-600 text-white text-[11px] font-bold flex items-center justify-center">
-                1
-              </span>
-              <span className="text-xs font-bold text-[var(--text-primary)]">
-                选择文件夹
-              </span>
-            </div>
-
+            <label className="text-xs font-bold text-[var(--text-secondary)] flex items-center gap-1.5">
+              <FolderOpen className="w-3.5 h-3.5 text-brand-accent" />
+              <span>选择待拆分的目标文件夹</span>
+            </label>
             {localFiles && (
-              <span className="text-xs font-semibold text-emerald-accent flex items-center gap-1">
-                <Check className="w-3.5 h-3.5" />
-                <span>已载入 {localFiles.length} 个文件</span>
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-emerald-accent flex items-center gap-1">
+                  <Check className="w-3.5 h-3.5" />
+                  <span>已载入 {localFiles.length} 个文件</span>
+                </span>
+                {dirHandle && (
+                  <button
+                    type="button"
+                    onClick={handleRefreshFolder}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 border border-indigo-500/20 transition-all"
+                    title="从磁盘重新读取最新文件"
+                  >
+                    <RotateCw className="w-3 h-3" />
+                    <span>刷新</span>
+                  </button>
+                )}
+              </div>
             )}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <button
               type="button"
-              onClick={handlePickLocalFolder}
+              onClick={handlePickFolder}
               className="h-11 px-5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/25 transition-all flex items-center gap-2 shrink-0"
             >
               <FolderOpen className="w-4 h-4" />
-              <span>选择文件夹</span>
+              <span>选择电脑文件夹</span>
             </button>
 
             <input
               type="text"
               readOnly={Boolean(localFiles)}
-              placeholder="点击左侧按钮选择文件夹..."
+              placeholder="点击左侧按钮选择本机电脑文件夹..."
               value={folderDisplayName || path}
               onChange={(e) => {
                 setPath(e.target.value);
                 setFolderDisplayName(e.target.value);
                 setLocalFiles(null);
+                setDirHandle(null);
               }}
-              className="flex-1 h-11 px-4 rounded-xl text-xs font-mono interactive-input"
+              className="flex-1 h-11 px-4 rounded-xl text-xs font-mono bg-[var(--bg-input)] text-[var(--text-primary)] border border-[var(--border-subtle)] focus:border-indigo-500 outline-none transition-all"
             />
           </div>
         </div>
 
-        {/* STEP 2: Templates */}
+        {/* Step 2: Intelligent Sample Format Input (只发成品命名格式即可自动切分) */}
         <div className="space-y-3 pt-2 border-t border-[var(--border-subtle)]">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="w-5 h-5 rounded-full bg-indigo-600 text-white text-[11px] font-bold flex items-center justify-center">
-                2
-              </span>
-              <span className="text-xs font-bold text-[var(--text-primary)]">
-                拆分规则模板
+            <label className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-cyan-accent" />
+              <span>输入成品命名示例 (系统将全自动识别并拆分成数据列)</span>
+            </label>
+            <span className="text-[11px] text-[var(--text-muted)]">
+              自动识别电力巡检、图纸代号、日期归档等复合命名
+            </span>
+          </div>
+
+          {/* Sample Format Input Box */}
+          <div className="relative">
+            <input
+              type="text"
+              value={sampleInput}
+              onChange={(e) => setSampleInput(e.target.value)}
+              placeholder="粘贴或输入一个成品文件名示例，如: 10kV范西292线宏伟支线_右横担_柱瓶-绝缘子破损"
+              className="w-full h-11 px-4 text-xs font-mono font-bold bg-[var(--bg-input)] text-cyan-accent border border-[var(--border-subtle)] focus:border-cyan-500 rounded-xl outline-none shadow-inner"
+            />
+          </div>
+
+          {/* Inferred Columns Display (直观卡片展示) */}
+          <div className="space-y-2 pt-1">
+            <div className="flex items-center justify-between text-xs text-[var(--text-secondary)] font-semibold">
+              <span className="flex items-center gap-1.5">
+                <Split className="w-3.5 h-3.5 text-indigo-400" />
+                <span>自动切分结果 (共 {segments.length} 个数据列，可直接修改列名):</span>
               </span>
             </div>
 
-            <button
-              type="button"
-              onClick={openCreateTemplateModal}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-indigo-500/10 text-brand-accent hover:bg-indigo-500/20 border border-indigo-500/25 transition-all shadow-sm"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>新建规则</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              {segments.map((seg, idx) => (
+                <div
+                  key={seg.id || idx}
+                  className="flex items-center gap-1.5 p-2 rounded-xl bg-[var(--bg-input)] border border-cyan-500/30 shadow-sm"
+                >
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-cyan-400 font-mono font-bold">
+                      提取值: {seg.sampleValue || '(空)'}
+                    </span>
+                    <input
+                      type="text"
+                      value={columns[idx] || seg.columnName}
+                      onChange={(e) => handleUpdateColumnName(idx, e.target.value)}
+                      className="text-xs font-bold bg-transparent text-[var(--text-primary)] border-b border-[var(--border-subtle)] focus:border-cyan-500 outline-none w-28 py-0.5"
+                      title="点击修改此列标题"
+                    />
+                  </div>
+                  {idx < segments.length - 1 && (
+                    <ArrowRight className="w-3 h-3 text-[var(--text-muted)] ml-1" />
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
 
-          {templates.length === 0 ? (
-            <div className="p-6 rounded-xl bg-[var(--bg-input)] border border-dashed border-[var(--border-subtle)] flex flex-col items-center justify-center text-center gap-2">
-              <Bookmark className="w-6 h-6 text-[var(--text-muted)]" />
-              <p className="text-xs text-[var(--text-secondary)] font-medium">
-                暂无拆分规则，点击右上方新建规则
-              </p>
+          {/* Quick Excel Layout & Action Buttons */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[var(--border-subtle)]">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-[var(--text-secondary)]">Excel 排版:</span>
+              <div className="flex items-center p-1 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
+                <button
+                  type="button"
+                  onClick={() => setLayout('grouped_sheets')}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                    layout === 'grouped_sheets'
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                  }`}
+                >
+                  按文件夹分 Sheet
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLayout('single_sheet')}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                    layout === 'single_sheet'
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                  }`}
+                >
+                  汇总至单 Sheet
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={openCreateTemplateModal}
-                className="action-btn-primary px-4 py-2 text-xs inline-flex items-center gap-1.5 mt-1 shadow-sm"
+                disabled={loading}
+                onClick={handlePreview}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-[var(--bg-input)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] shadow-sm transition-all"
               >
-                <Plus className="w-3.5 h-3.5" />
-                <span>新建规则</span>
+                {loading ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                    <span>正在解析...</span>
+                  </>
+                ) : (
+                  <>
+                    <Eye className="w-4 h-4 text-cyan-accent" />
+                    <span>预览拆分数据</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                disabled={exporting}
+                onClick={handleExport}
+                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20 transition-all"
+              >
+                {exporting ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>正在导出 Excel...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" />
+                    <span>一键导出 Excel 表格</span>
+                  </>
+                )}
               </button>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-              {templates.map((tpl) => {
-                const isSelected = activeTemplateId === tpl.id;
-                const fieldsList = tpl.fields || [];
-                const enabledCount = fieldsList.filter((f) => f.enabled).length;
-
-                return (
-                  <div
-                    key={tpl.id}
-                    onClick={() => {
-                      setActiveTemplateId(tpl.id);
-                      localStorage.setItem(STORAGE_KEY_ACTIVE_TEMPLATE, tpl.id);
-                      showToast(`已选用: ${tpl.name}`, 'info');
-                    }}
-                    className={`group relative p-4 rounded-xl cursor-pointer transition-all border ${
-                      isSelected
-                        ? 'bg-indigo-600/10 border-indigo-500 shadow-md shadow-indigo-600/15'
-                        : 'bg-[var(--bg-input)] border-[var(--border-subtle)] hover:border-[var(--border-hover)] hover:bg-[var(--bg-surface-hover)]'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2 mb-2.5">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                            isSelected
-                              ? 'border-indigo-500 bg-indigo-600 text-white'
-                              : 'border-[var(--border-subtle)]'
-                          }`}
-                        >
-                          {isSelected && <Check className="w-2.5 h-2.5" />}
-                        </div>
-                        <span className="font-bold text-xs text-[var(--text-primary)] truncate max-w-[160px]">
-                          {tpl.name}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                        <button
-                          type="button"
-                          onClick={(e) => openEditTemplateModal(tpl, e)}
-                          className="p-1 rounded hover:bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] hover:text-brand-accent"
-                          title="编辑规则"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => handleDeleteTemplate(tpl.id, e)}
-                          className="p-1 rounded hover:bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] hover:text-rose-400"
-                          title="删除规则"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Sequence Preview on Card */}
-                    <div className="space-y-2 text-[11px] text-[var(--text-secondary)]">
-                      <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)]">
-                        <span className="flex items-center gap-1">
-                          <Layers className="w-3 h-3 text-indigo-400" />
-                          <span>{enabledCount}/{fieldsList.length} 字段启用</span>
-                        </span>
-                        <span className="px-1.5 py-0.2 rounded bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
-                          {tpl.layout === 'grouped_sheets' ? '按目录拆Sheet' : '单Sheet汇总'}
-                        </span>
-                      </div>
-
-                      {/* Visual Fields Chain */}
-                      <div className="flex flex-wrap items-center gap-1 pt-0.5">
-                        {fieldsList.map((f, i) => (
-                          <span
-                            key={f.id || i}
-                            className={`px-2 py-0.5 rounded text-[10px] font-mono whitespace-nowrap inline-flex items-center gap-1 ${
-                              f.enabled
-                                ? 'tag-badge font-semibold'
-                                : 'bg-[var(--bg-surface-elevated)] text-[var(--text-muted)] border border-[var(--border-subtle)] opacity-70'
-                            }`}
-                          >
-                            <span>{f.value}</span>
-                            {!f.enabled && <span className="text-[9px] text-[var(--text-muted)]">(关)</span>}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* STEP 3: Preview & Export Action Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-[var(--border-subtle)]">
-          <div className="flex items-center gap-2">
-            <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-[11px] font-bold flex items-center justify-center">
-              3
-            </span>
-            <span className="text-xs font-bold text-[var(--text-primary)]">
-              确认并导出
-            </span>
-            {activeTemplate && (
-              <span className="text-xs text-[var(--text-secondary)] ml-2">
-                当前规则: <strong className="text-brand-accent font-mono">{activeTemplate.name}</strong>
-              </span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              disabled={loading || !activeTemplate || (!localFiles && !path.trim())}
-              onClick={() => activeTemplate && runPreview(activeTemplate)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-[var(--bg-surface-elevated)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] disabled:opacity-40 transition-all"
-            >
-              {loading ? (
-                <span className="w-3.5 h-3.5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <Eye className="w-4 h-4 text-brand-accent" />
-              )}
-              <span>刷新预览</span>
-            </button>
-
-            <button
-              type="button"
-              disabled={exporting || !activeTemplate || (!localFiles && !path.trim())}
-              onClick={handleExportXlsx}
-              className="action-btn-success inline-flex items-center gap-2 px-5 py-2.5 text-xs sm:text-sm shadow-md disabled:opacity-40"
-            >
-              {exporting ? (
-                <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <Download className="w-4 h-4" />
-              )}
-              <span>导出 Excel</span>
-            </button>
           </div>
         </div>
       </div>
 
-      {/* KPI Cards */}
+      {/* Step 3: Data Preview Table */}
       {previewResult && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="glass-panel p-4">
-            <div className="text-xs text-[var(--text-secondary)] font-semibold mb-1">
-              总文件数
-            </div>
-            <div className="text-2xl font-bold font-mono tabular-nums text-[var(--text-primary)]">
-              {previewResult.file_count.toLocaleString()}
-            </div>
-            <div className="text-[11px] text-[var(--text-muted)] mt-1 font-mono">
-              包含全部扫描文件
-            </div>
-          </div>
-
-          <div className="glass-panel p-4">
-            <div className="text-xs text-[var(--text-secondary)] font-semibold mb-1">
-              拆分字段列数
-            </div>
-            <div className="text-2xl font-bold font-mono tabular-nums text-emerald-accent">
-              {Math.max(0, previewResult.headers.length - 2)} 列
-            </div>
-            <div className="text-[11px] text-[var(--text-muted)] mt-1 font-mono">
-              对应提取的命名数据列
-            </div>
-          </div>
-
-          <div className="glass-panel p-4">
-            <div className="text-xs text-[var(--text-secondary)] font-semibold mb-1">
-              生成工作表数
-            </div>
-            <div className="text-2xl font-bold font-mono tabular-nums text-cyan-accent">
-              {previewResult.leaf_count.toLocaleString()}
-            </div>
-            <div className="text-[11px] text-[var(--text-muted)] mt-1 font-mono">
-              按叶子目录归类
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Online Preview Table */}
-      {previewResult && (
-        <div className="glass-panel overflow-hidden">
-          <div className="p-4 sm:p-5 border-b border-[var(--border-subtle)] flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[var(--bg-surface-elevated)]/30">
+        <div className="glass-panel overflow-hidden space-y-0">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-6 py-4 border-b border-[var(--border-subtle)] bg-[var(--bg-surface-elevated)]/40">
             <div className="flex items-center gap-2.5">
-              <FileSpreadsheet className="w-4 h-4 text-brand-accent" />
-              <h3 className="font-bold text-sm text-[var(--text-primary)]">
-                拆分数据在线预览 ({filteredRows.length} / {previewResult.rows.length} 行)
-              </h3>
+              <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold flex items-center justify-center border border-emerald-500/30">
+                3
+              </span>
+              <div>
+                <h3 className="font-bold text-sm text-[var(--text-primary)] flex items-center gap-2">
+                  <span>数据预览 ({filteredRows.length} / {previewResult.file_count} 项)</span>
+                  {previewResult.unmatched_count > 0 && (
+                    <span className="text-xs px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                      未匹配: {previewResult.unmatched_count} 项
+                    </span>
+                  )}
+                </h3>
+              </div>
             </div>
 
-            <div className="relative w-full sm:w-64">
-              <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="搜索任意拆分内容..."
-                value={searchFilter}
-                onChange={(e) => setSearchFilter(e.target.value)}
-                className="w-full h-8 pl-8 pr-3 rounded-lg text-xs bg-[var(--bg-input)] text-[var(--text-primary)] border border-[var(--border-subtle)] focus:border-indigo-500 outline-none"
-              />
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="搜索结果数据..."
+                  value={searchFilter}
+                  onChange={(e) => setSearchFilter(e.target.value)}
+                  className="h-8 pl-8 pr-3 rounded-lg text-xs bg-[var(--bg-input)] text-[var(--text-primary)] border border-[var(--border-subtle)] focus:border-indigo-500 outline-none w-52"
+                />
+              </div>
+
+              <button
+                type="button"
+                disabled={exporting}
+                onClick={handleExport}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition-all"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>导出 Excel</span>
+              </button>
             </div>
           </div>
 
-          <div className="overflow-x-auto max-h-[560px] overflow-y-auto">
-            <table className="min-w-[860px] w-full text-left text-xs border-collapse">
+          {/* Data Table */}
+          <div className="overflow-x-auto max-h-[500px]">
+            <table className="min-w-full text-left text-xs border-collapse font-mono">
               <thead>
-                <tr className="border-b border-[var(--border-subtle)] bg-[var(--bg-surface-elevated)] text-[var(--text-secondary)] font-semibold sticky top-0 z-10 shadow-sm">
-                  <th className="py-3 px-3 w-12 text-center whitespace-nowrap">#</th>
-                  {previewResult.headers.map((h, i) => (
-                    <th key={i} className="py-3 px-4 whitespace-nowrap">
-                      {h}
+                <tr className="border-b border-[var(--border-subtle)] bg-[var(--bg-surface-elevated)] text-[var(--text-secondary)] font-semibold sticky top-0 z-10 select-none">
+                  <th className="py-3 px-3 w-10 text-center">#</th>
+                  {previewResult.headers.map((header, hIdx) => (
+                    <th key={hIdx} className="py-3 px-4 whitespace-nowrap">
+                      {header}
                     </th>
                   ))}
                 </tr>
@@ -827,310 +540,37 @@ export function FilenameSplitView({ initialPath = '' }: FilenameSplitViewProps) 
                       colSpan={previewResult.headers.length + 1}
                       className="py-12 text-center text-[var(--text-muted)]"
                     >
-                      暂无匹配数据
+                      未找到匹配的数据记录
                     </td>
                   </tr>
                 ) : (
-                  filteredRows.map((row, rowIdx) => {
-                    return (
-                      <tr
-                        key={rowIdx}
-                        className="hover:bg-[var(--bg-surface-hover)]/60 transition-colors"
-                      >
-                        <td className="py-3 px-3 text-center font-mono text-[11px] text-[var(--text-muted)] whitespace-nowrap">
-                          {rowIdx + 1}
+                  filteredRows.map((row, rIdx) => (
+                    <tr
+                      key={rIdx}
+                      className="hover:bg-[var(--bg-surface-hover)]/70 transition-colors"
+                    >
+                      <td className="py-2.5 px-3 text-center text-[11px] text-[var(--text-muted)]">
+                        {rIdx + 1}
+                      </td>
+                      {row.map((cell, cIdx) => (
+                        <td
+                          key={cIdx}
+                          className={`py-2.5 px-4 whitespace-nowrap ${
+                            cIdx === 0
+                              ? 'text-indigo-300 font-semibold'
+                              : cIdx === 1
+                              ? 'text-[var(--text-secondary)]'
+                              : 'text-cyan-accent font-bold'
+                          }`}
+                        >
+                          {cell || <span className="text-[var(--text-muted)] font-normal">-</span>}
                         </td>
-                        {row.map((cell, cellIdx) => {
-                          if (cellIdx === 0) {
-                            return (
-                              <td key={cellIdx} className="py-3 px-4 min-w-[140px]">
-                                <span className="font-mono text-cyan-accent font-semibold">
-                                  {cell}
-                                </span>
-                              </td>
-                            );
-                          }
-
-                          if (cellIdx === 1) {
-                            return (
-                              <td key={cellIdx} className="py-3 px-4 font-mono font-bold text-[var(--text-primary)] whitespace-nowrap min-w-[200px]">
-                                {cell}
-                              </td>
-                            );
-                          }
-
-                          return (
-                            <td key={cellIdx} className="py-3 px-4 font-mono font-semibold text-brand-accent whitespace-nowrap">
-                              {cell || <span className="text-[var(--text-muted)] font-normal">-</span>}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    );
-                  })
+                      ))}
+                    </tr>
+                  ))
                 )}
               </tbody>
             </table>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 🧩 COMPACT FIELD BUILDER MODAL */}
-      {/* ========================================================================= */}
-      {isTemplateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-md animate-fade-in overflow-y-auto">
-          <div className="w-full max-w-3xl rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-2xl p-6 space-y-5 my-6">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
-              <div className="flex items-center gap-2.5 font-bold text-base text-[var(--text-primary)]">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-400 p-[1px] shadow-sm">
-                  <div className="w-full h-full rounded-xl bg-[var(--bg-surface)] flex items-center justify-center">
-                    <SlidersHorizontal className="w-4 h-4 text-brand-accent" />
-                  </div>
-                </div>
-                <span>{editingTemplateId ? '编辑拆分规则' : '新建拆分规则'}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsTemplateModalOpen(false)}
-                className="p-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Template Name & Presets Toolbar */}
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
-              <div className="sm:col-span-6">
-                <label className="block text-xs font-bold text-[var(--text-secondary)] mb-1">
-                  规则名称
-                </label>
-                <input
-                  type="text"
-                  placeholder="输入规则名称..."
-                  value={modalName}
-                  onChange={(e) => setModalName(e.target.value)}
-                  className="w-full h-10 px-3.5 rounded-xl text-xs font-semibold interactive-input text-[var(--text-primary)]"
-                />
-              </div>
-
-              <div className="sm:col-span-6">
-                <label className="block text-xs font-bold text-[var(--text-secondary)] mb-1 flex items-center gap-1">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-accent" />
-                  <span>快捷预设:</span>
-                </label>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => handleApplyPreset('underscore')}
-                    className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-[var(--bg-input)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] transition-colors"
-                  >
-                    项目_年份_序号
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleApplyPreset('hyphen')}
-                    className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-[var(--bg-input)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] transition-colors"
-                  >
-                    部门-年份-月份
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleApplyPreset('mixed')}
-                    className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-[var(--bg-input)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] transition-colors"
-                  >
-                    合同_甲方-版本
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* ================================================================= */}
-            {/* 🧩 COMPACT FIELD CHIPS TRACK (DRAG & DROP WORKSPACE) */}
-            {/* ================================================================= */}
-            <div className="space-y-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse" />
-                  <label className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-2">
-                    <span>字段序列</span>
-                    <span className="text-[11px] font-normal text-[var(--text-muted)] flex items-center gap-1">
-                      <MoveHorizontal className="w-3 h-3 text-indigo-400" />
-                      <span>可拖拽排序 / 直接输入名称或符号</span>
-                    </span>
-                  </label>
-                </div>
-
-                {/* Add Buttons */}
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleAddField('', true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/20 transition-all"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>添加字段</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Compact Drag and Drop Track Canvas */}
-              <div className="p-3.5 rounded-2xl bg-[var(--bg-input)]/70 border-2 border-dashed border-[var(--border-subtle)] min-h-[120px] max-h-[300px] overflow-y-auto space-y-2">
-                {modalFields.length === 0 ? (
-                  <div className="py-8 text-center text-xs text-[var(--text-muted)]">
-                    请点击上方「+ 添加字段」开始配置
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap items-center gap-2">
-                    {modalFields.map((field, idx) => {
-                      const isDragged = draggedIndex === idx;
-                      const isDropTarget = dragOverIndex === idx;
-
-                      return (
-                        <div
-                          key={field.id}
-                          draggable
-                          onDragStart={(e) => handleDragStart(e, idx)}
-                          onDragOver={(e) => handleDragOver(e, idx)}
-                          onDrop={(e) => handleDrop(e, idx)}
-                          onDragEnd={handleDragEnd}
-                          className={`group relative rounded-xl px-2.5 py-1.5 border transition-all select-none flex items-center gap-2 ${
-                            isDragged ? 'opacity-30 scale-95' : 'opacity-100'
-                          } ${
-                            isDropTarget
-                              ? 'border-indigo-400 ring-2 ring-indigo-500/40 scale-105'
-                              : ''
-                          } ${
-                            field.enabled
-                              ? 'bg-gradient-to-r from-indigo-950/90 to-purple-950/80 border-indigo-500/40 shadow-sm'
-                              : 'bg-[var(--bg-surface-elevated)] border-dashed border-[var(--border-subtle)] opacity-75'
-                          }`}
-                        >
-                          {/* Grip Handle */}
-                          <div className="cursor-grab active:cursor-grabbing text-indigo-400 hover:text-indigo-300">
-                            <GripVertical className="w-3.5 h-3.5" />
-                          </div>
-
-                          {/* Direct Input on Field (No separate delimiter box!) */}
-                          <input
-                            type="text"
-                            value={field.value}
-                            onChange={(e) => handleUpdateFieldValue(field.id, e.target.value)}
-                            placeholder="字段/符号..."
-                            className={`h-7 w-20 sm:w-24 px-2 rounded-lg text-xs font-bold font-mono text-center interactive-input ${
-                              !field.enabled ? 'text-[var(--text-muted)] line-through' : 'text-[var(--text-primary)]'
-                            }`}
-                          />
-
-                          {/* Direct Enable / Disable Toggle */}
-                          <button
-                            type="button"
-                            onClick={() => handleToggleFieldEnable(field.id)}
-                            className="p-1 rounded hover:bg-[var(--bg-surface-hover)] transition-colors"
-                            title={field.enabled ? '已开启为导出列 (点击关闭)' : '已关闭/作为分隔跳过 (点击开启)'}
-                          >
-                            {field.enabled ? (
-                              <ToggleRight className="w-4 h-4 text-emerald-400" />
-                            ) : (
-                              <ToggleLeft className="w-4 h-4 text-[var(--text-muted)]" />
-                            )}
-                          </button>
-
-                          {/* Delete Button */}
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteField(field.id)}
-                            className="p-1 rounded text-[var(--text-muted)] hover:text-rose-400 hover:bg-[var(--bg-surface)] transition-colors"
-                            title="删除"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Real-time Simulation Preview */}
-              <div className="p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-1.5">
-                <div className="text-[11px] font-bold text-[var(--text-secondary)] flex items-center justify-between">
-                  <span>拼接格式预览:</span>
-                  <span className="text-[10px] text-emerald-accent font-semibold">
-                    生成 {modalFields.filter((f) => f.enabled).length} 个导出列
-                  </span>
-                </div>
-
-                {/* Pill String Visualizer */}
-                <div className="flex flex-wrap items-center gap-1 font-mono text-xs text-[var(--text-primary)]">
-                  {modalFields.map((f, i) => (
-                    <span
-                      key={f.id || i}
-                      className={`px-2 py-0.5 rounded-md text-xs font-bold border transition-all ${
-                        f.enabled
-                          ? 'tag-badge'
-                          : 'bg-[var(--bg-input)] text-[var(--text-muted)] border-[var(--border-subtle)] line-through'
-                      }`}
-                    >
-                      {f.value || '空'}
-                      {!f.enabled && <span className="text-[10px] no-underline ml-1">(关)</span>}
-                    </span>
-                  ))}
-                  <span className="text-[var(--text-muted)] text-[11px] ml-1">.扩展名</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Excel Layout Option */}
-            <div>
-              <label className="block text-xs font-bold text-[var(--text-secondary)] mb-1.5">
-                Excel 工作表生成结构
-              </label>
-              <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-[var(--bg-input)] border border-[var(--border-subtle)]">
-                <button
-                  type="button"
-                  onClick={() => setModalLayout('grouped_sheets')}
-                  className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all ${
-                    modalLayout === 'grouped_sheets'
-                      ? 'bg-indigo-600 text-white shadow-sm font-bold'
-                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                  }`}
-                >
-                  按最深层目录拆分 Sheet (推荐)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setModalLayout('single_sheet')}
-                  className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all ${
-                    modalLayout === 'single_sheet'
-                      ? 'bg-indigo-600 text-white shadow-sm font-bold'
-                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                  }`}
-                >
-                  单 Sheet 全部汇总
-                </button>
-              </div>
-            </div>
-
-            {/* Modal Actions */}
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-[var(--border-subtle)]">
-              <button
-                type="button"
-                onClick={() => setIsTemplateModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] border border-[var(--border-subtle)] transition-colors"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveTemplate}
-                className="action-btn-primary px-5 py-2 text-xs font-bold inline-flex items-center gap-1.5 shadow-md"
-              >
-                <Check className="w-3.5 h-3.5" />
-                <span>保存规则</span>
-              </button>
-            </div>
           </div>
         </div>
       )}

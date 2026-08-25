@@ -6,3 +6,4 @@ export * from './models/split.model.js';
 export * from './utils/format.util.js';
 export * from './utils/prefix.util.js';
 export * from './utils/local-processor.util.js';
+export * from './utils/segment-infer.util.js';
