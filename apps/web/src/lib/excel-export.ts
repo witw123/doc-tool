@@ -58,15 +58,18 @@ export async function exportLocalSplitExcel(
       column.width = Math.min(maxLen, 45);
     });
 
-    sheet.autoFilter = {
-      from: { row: 1, column: 1 },
-      to: { row: sheetRows.length + 1, column: headers.length },
-    };
+    if (sheetRows.length > 0) {
+      sheet.autoFilter = {
+        from: { row: 1, column: 1 },
+        to: { row: sheetRows.length + 1, column: headers.length },
+      };
+    }
   };
 
   if (layout === 'single_sheet') {
     const sheet = workbook.addWorksheet(safeSheetName('文件明细', usedNames));
     applySheetStyle(sheet, rows);
+  } else {
     // Group rows by folder name (column 0)
     const grouped = new Map<string, string[][]>();
     for (const row of rows) {
@@ -75,9 +78,14 @@ export async function exportLocalSplitExcel(
       grouped.get(folderName)!.push(row);
     }
 
-    for (const [folderName, dirRows] of grouped.entries()) {
-      const sheet = workbook.addWorksheet(safeSheetName(folderName, usedNames));
-      applySheetStyle(sheet, dirRows);
+    if (grouped.size === 0) {
+      const sheet = workbook.addWorksheet(safeSheetName('文件明细', usedNames));
+      applySheetStyle(sheet, rows);
+    } else {
+      for (const [folderName, dirRows] of grouped.entries()) {
+        const sheet = workbook.addWorksheet(safeSheetName(folderName, usedNames));
+        applySheetStyle(sheet, dirRows);
+      }
     }
   }
 

@@ -120,3 +120,116 @@ export async function pickLocalFolder(): Promise<LocalFolderPickResult> {
     input.click();
   });
 }
+
+/**
+ * Open file picker to choose one or multiple individual files.
+ */
+export async function pickLocalFiles(): Promise<LocalFolderPickResult> {
+  return new Promise<LocalFolderPickResult>((resolve, reject) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.style.display = 'none';
+
+    input.onchange = () => {
+      const fileList = input.files;
+      if (!fileList || fileList.length === 0) {
+        reject(new Error('未选择任何文件'));
+        return;
+      }
+
+      const files: LocalScannedFile[] = [];
+      for (let i = 0; i < fileList.length; i++) {
+        const f = fileList[i]!;
+        const lastDot = f.name.lastIndexOf('.');
+        const ext = lastDot > 0 ? f.name.substring(lastDot).toLowerCase() : '';
+
+        files.push({
+          filename: f.name,
+          relPath: f.name,
+          size: f.size,
+          mtime: new Date(f.lastModified).toISOString().replace('T', ' ').slice(0, 19),
+          ext,
+        });
+      }
+
+      resolve({
+        folderName: `已导入 ${files.length} 个文件`,
+        files,
+      });
+      document.body.removeChild(input);
+    };
+
+    input.oncancel = () => {
+      document.body.removeChild(input);
+      reject(new Error('用户取消了文件选择'));
+    };
+
+    document.body.appendChild(input);
+    input.click();
+  });
+}
+
+/**
+ * Parse files from HTML5 Drag and Drop event.
+ */
+export async function parseDroppedItems(dataTransfer: DataTransfer): Promise<LocalFolderPickResult> {
+  const files: LocalScannedFile[] = [];
+
+  // Helper for webkitGetAsEntry (handles dropped folders and files)
+  const traverseEntry = async (entry: any, path = ''): Promise<void> => {
+    if (entry.isFile) {
+      const file: File = await new Promise((res, rej) => entry.file(res, rej));
+      const lastDot = file.name.lastIndexOf('.');
+      const ext = lastDot > 0 ? file.name.substring(lastDot).toLowerCase() : '';
+      const relPath = path ? `${path}/${file.name}` : file.name;
+      files.push({
+        filename: file.name,
+        relPath,
+        size: file.size,
+        mtime: new Date(file.lastModified).toISOString().replace('T', ' ').slice(0, 19),
+        ext,
+      });
+    } else if (entry.isDirectory) {
+      const dirReader = entry.createReader();
+      const entries: any[] = await new Promise((res, rej) => {
+        dirReader.readEntries(res, rej);
+      });
+      for (const child of entries) {
+        await traverseEntry(child, path ? `${path}/${entry.name}` : entry.name);
+      }
+    }
+  };
+
+  const items = dataTransfer.items;
+  if (items && items.length > 0 && typeof items[0]?.webkitGetAsEntry === 'function') {
+    for (let i = 0; i < items.length; i++) {
+      const entry = items[i]?.webkitGetAsEntry();
+      if (entry) {
+        await traverseEntry(entry);
+      }
+    }
+  } else if (dataTransfer.files && dataTransfer.files.length > 0) {
+    for (let i = 0; i < dataTransfer.files.length; i++) {
+      const f = dataTransfer.files[i]!;
+      const lastDot = f.name.lastIndexOf('.');
+      const ext = lastDot > 0 ? f.name.substring(lastDot).toLowerCase() : '';
+      files.push({
+        filename: f.name,
+        relPath: f.name,
+        size: f.size,
+        mtime: new Date(f.lastModified).toISOString().replace('T', ' ').slice(0, 19),
+        ext,
+      });
+    }
+  }
+
+  if (files.length === 0) {
+    throw new Error('未检测到可导入的文件');
+  }
+
+  return {
+    folderName: `拖拽导入 (${files.length} 个文件)`,
+    files,
+  };
+}

@@ -17,6 +17,9 @@ import {
   Zap,
   ArrowRight,
   Split,
+  UploadCloud,
+  FileCode,
+  X,
 } from 'lucide-react';
 import {
   FilenamePreviewResponse,
@@ -25,7 +28,12 @@ import {
   LocalScannedFile,
 } from '@doc-tool/shared';
 import { apiPreviewFilenameSplit, apiExportFilenameSplitXlsx } from '@/lib/api';
-import { pickLocalFolder, scanDirectoryHandle } from '@/lib/local-folder-picker';
+import {
+  pickLocalFolder,
+  pickLocalFiles,
+  parseDroppedItems,
+  scanDirectoryHandle,
+} from '@/lib/local-folder-picker';
 import { exportLocalSplitExcel } from '@/lib/excel-export';
 import { useToast } from './Toast';
 
@@ -43,6 +51,7 @@ export function FilenameSplitView({ initialPath = '' }: FilenameSplitViewProps) 
   const [folderDisplayName, setFolderDisplayName] = useState(initialPath || '');
   const [localFiles, setLocalFiles] = useState<LocalScannedFile[] | null>(null);
   const [dirHandle, setDirHandle] = useState<any>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   // Sample format input (用户发/输入的成品命名格式)
   const [sampleInput, setSampleInput] = useState(DEFAULT_SAMPLE);
@@ -61,44 +70,47 @@ export function FilenameSplitView({ initialPath = '' }: FilenameSplitViewProps) 
   const [previewResult, setPreviewResult] = useState<FilenamePreviewResponse | null>(null);
   const [searchFilter, setSearchFilter] = useState('');
 
-  // Automatically parse sample whenever sampleInput changes
-  useEffect(() => {
-    if (!sampleInput.trim()) return;
-    const inferred = inferSegmentsFromSample(sampleInput.trim());
-    setPattern(inferred.pattern);
-    setColumns(inferred.columns);
-    setSegments(inferred.segments);
-  }, [sampleInput]);
+  // Helper to auto-infer and preview files immediately
+  const applyImportedFiles = (files: LocalScannedFile[], displayName: string, handle?: any) => {
+    setFolderDisplayName(displayName);
+    setPath(displayName);
+    setLocalFiles(files);
+    setDirHandle(handle || null);
+
+    showToast(`已载入「${displayName}」，共计 ${files.length} 个文件`, 'success');
+
+    if (files.length > 0) {
+      const firstFile = files[0]!.filename;
+      const lastDot = firstFile.lastIndexOf('.');
+      const stem = lastDot > 0 ? firstFile.substring(0, lastDot) : firstFile;
+
+      // Update sample format with first file's stem or name if using default sample
+      const sampleToUse = sampleInput === DEFAULT_SAMPLE ? (stem || firstFile) : sampleInput;
+      if (sampleInput === DEFAULT_SAMPLE) {
+        setSampleInput(sampleToUse);
+      }
+
+      const inferred = inferSegmentsFromSample(sampleToUse);
+      try {
+        const preview = processLocalFilenameSplit(
+          displayName,
+          files,
+          inferred.pattern,
+          inferred.columns
+        );
+        setPreviewResult(preview);
+      } catch {
+        // ignore
+      }
+    }
+  };
 
   // Pick Native Folder
   const handlePickFolder = async () => {
     try {
       setLoading(true);
       const res = await pickLocalFolder();
-      setFolderDisplayName(res.folderName);
-      setPath(res.folderName);
-      setLocalFiles(res.files);
-      setDirHandle(res.handle || null);
-
-      showToast(`已选择文件夹「${res.folderName}」，共计 ${res.files.length} 个文件`, 'success');
-
-      // If user has not changed sample or if files are present, automatically adopt the 1st file as sample
-      if (res.files.length > 0) {
-        const firstFile = res.files[0]!.filename;
-        setSampleInput(firstFile);
-        const inferred = inferSegmentsFromSample(firstFile);
-        try {
-          const preview = processLocalFilenameSplit(
-            res.folderName,
-            res.files,
-            inferred.pattern,
-            inferred.columns
-          );
-          setPreviewResult(preview);
-        } catch {
-          // ignore
-        }
-      }
+      applyImportedFiles(res.files, res.folderName, res.handle);
     } catch (err: any) {
       if (err.message !== '用户取消了文件夹选择') {
         showToast(`选择文件夹失败: ${err.message}`, 'error');
@@ -106,6 +118,59 @@ export function FilenameSplitView({ initialPath = '' }: FilenameSplitViewProps) 
     } finally {
       setLoading(false);
     }
+  };
+
+  // Pick Loose / Multiple Files Directly
+  const handlePickFiles = async () => {
+    try {
+      setLoading(true);
+      const res = await pickLocalFiles();
+      applyImportedFiles(res.files, res.folderName);
+    } catch (err: any) {
+      if (err.message !== '用户取消了文件选择') {
+        showToast(`选择文件失败: ${err.message}`, 'error');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    try {
+      setLoading(true);
+      const res = await parseDroppedItems(e.dataTransfer);
+      applyImportedFiles(res.files, res.folderName);
+    } catch (err: any) {
+      showToast(`拖拽导入失败: ${err.message}`, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Clear imported files
+  const handleClearFiles = () => {
+    setLocalFiles(null);
+    setDirHandle(null);
+    setFolderDisplayName('');
+    setPath('');
+    setPreviewResult(null);
   };
 
   // Refresh Folder from Disk
@@ -134,6 +199,15 @@ export function FilenameSplitView({ initialPath = '' }: FilenameSplitViewProps) 
       setLoading(false);
     }
   };
+
+  // Automatically parse sample whenever sampleInput changes
+  useEffect(() => {
+    if (!sampleInput.trim()) return;
+    const inferred = inferSegmentsFromSample(sampleInput.trim());
+    setPattern(inferred.pattern);
+    setColumns(inferred.columns);
+    setSegments(inferred.segments);
+  }, [sampleInput]);
 
   // Update a column's name
   const handleUpdateColumnName = (index: number, newName: string) => {
@@ -188,7 +262,7 @@ export function FilenameSplitView({ initialPath = '' }: FilenameSplitViewProps) 
     }
 
     if (!path.trim()) {
-      showToast('请先选择或输入目标文件夹路径', 'warning');
+      showToast('请先选择文件夹或导入文件', 'warning');
       return;
     }
 
@@ -212,6 +286,11 @@ export function FilenameSplitView({ initialPath = '' }: FilenameSplitViewProps) 
   const handleExport = async () => {
     if (!pattern.trim()) {
       showToast('请输入成品命名格式样例', 'warning');
+      return;
+    }
+
+    if (!localFiles && !path.trim()) {
+      showToast('请先选择文件夹或导入文件', 'warning');
       return;
     }
 
@@ -249,11 +328,6 @@ export function FilenameSplitView({ initialPath = '' }: FilenameSplitViewProps) 
 
         showToast(`Excel 导出成功：共 ${preview.file_count} 条记录`, 'success');
       } else {
-        if (!path.trim()) {
-          showToast('请先选择或输入目标文件夹路径', 'warning');
-          return;
-        }
-
         const res = await apiExportFilenameSplitXlsx({
           path: path.trim(),
           pattern,
@@ -290,13 +364,22 @@ export function FilenameSplitView({ initialPath = '' }: FilenameSplitViewProps) 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Main Unified Input Card */}
-      <div className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-5 sm:p-6 shadow-xl space-y-5">
-        {/* Step 1: Folder Selection */}
-        <div className="space-y-2">
+      <div
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        className={`rounded-2xl bg-[var(--bg-surface)] border p-5 sm:p-6 shadow-xl space-y-5 transition-all relative ${
+          isDragging
+            ? 'border-indigo-500 bg-indigo-500/5 ring-2 ring-indigo-500/30'
+            : 'border-[var(--border-subtle)]'
+        }`}
+      >
+        {/* Step 1: File / Folder Selection */}
+        <div className="space-y-3">
           <div className="flex items-center justify-between">
             <label className="text-xs font-bold text-[var(--text-secondary)] flex items-center gap-1.5">
               <FolderOpen className="w-3.5 h-3.5 text-brand-accent" />
-              <span>选择待拆分的目标文件夹</span>
+              <span>选择待拆分的目标文件夹或文件 (支持直接拖入)</span>
             </label>
             {localFiles && (
               <div className="flex items-center gap-2">
@@ -315,24 +398,44 @@ export function FilenameSplitView({ initialPath = '' }: FilenameSplitViewProps) 
                     <span>刷新</span>
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={handleClearFiles}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold text-rose-400 hover:bg-rose-500/10 border border-rose-500/20 transition-all"
+                  title="清空已选择的文件"
+                >
+                  <X className="w-3 h-3" />
+                  <span>清空</span>
+                </button>
               </div>
             )}
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5">
             <button
               type="button"
               onClick={handlePickFolder}
-              className="h-11 px-5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/25 transition-all flex items-center gap-2 shrink-0"
+              className="h-11 px-4 sm:px-5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/25 transition-all flex items-center gap-2 shrink-0"
+              title="选择整个电脑文件夹进行拆分"
             >
               <FolderOpen className="w-4 h-4" />
-              <span>选择电脑文件夹</span>
+              <span>选择文件夹</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handlePickFiles}
+              className="h-11 px-4 sm:px-5 rounded-xl text-xs font-bold bg-[var(--bg-input)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] shadow-sm transition-all flex items-center gap-2 shrink-0"
+              title="直接多选本地文件进行拆分"
+            >
+              <UploadCloud className="w-4 h-4 text-cyan-accent" />
+              <span>导入文件 (多选)</span>
             </button>
 
             <input
               type="text"
               readOnly={Boolean(localFiles)}
-              placeholder="点击左侧按钮选择本机电脑文件夹..."
+              placeholder="可选择文件夹、导入多文件或直接拖拽文件到此处..."
               value={folderDisplayName || path}
               onChange={(e) => {
                 setPath(e.target.value);
@@ -340,7 +443,7 @@ export function FilenameSplitView({ initialPath = '' }: FilenameSplitViewProps) 
                 setLocalFiles(null);
                 setDirHandle(null);
               }}
-              className="flex-1 h-11 px-4 rounded-xl text-xs font-mono bg-[var(--bg-input)] text-[var(--text-primary)] border border-[var(--border-subtle)] focus:border-indigo-500 outline-none transition-all"
+              className="flex-1 h-11 px-4 rounded-xl text-xs font-mono bg-[var(--bg-input)] text-[var(--text-primary)] border border-[var(--border-subtle)] focus:border-indigo-500 outline-none transition-all min-w-[200px]"
             />
           </div>
         </div>
